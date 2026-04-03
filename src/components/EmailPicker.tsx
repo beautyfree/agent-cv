@@ -26,7 +26,6 @@ export function EmailPicker({ emailCounts, preSelected, onSubmit }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set(preSelected));
   const [phase, setPhase] = useState<"pick" | "save">("pick");
   const [search, setSearch] = useState("");
-  const [searching, setSearching] = useState(false);
 
   // Filter by search
   const filtered = useMemo(() => {
@@ -43,89 +42,60 @@ export function EmailPicker({ emailCounts, preSelected, onSubmit }: Props) {
   if (end === filtered.length) start = Math.max(0, end - windowSize);
   const visible = filtered.slice(start, end);
 
-  // Reset cursor on search change
   useMemo(() => { setCursor(0); }, [search]);
 
   useInput((input, key) => {
     if (phase === "save") {
-      if (input === "y" || key.return) {
-        onSubmit([...selected], true);
-      } else if (input === "n") {
-        onSubmit([...selected], false);
-      }
+      if (input === "y" || key.return) onSubmit([...selected], true);
+      else if (input === "n") onSubmit([...selected], false);
       return;
     }
 
-    // Search mode
-    if (searching) {
-      if (key.escape) {
-        setSearching(false);
-        setSearch("");
-        return;
-      }
-      if (key.backspace || key.delete) {
-        setSearch((s) => s.slice(0, -1));
-        if (search.length <= 1) {
-          setSearching(false);
-          setSearch("");
-        }
-        return;
-      }
-      if (key.return) {
-        setSearching(false);
-        return;
-      }
-      if (key.upArrow) {
-        setCursor((c) => (c > 0 ? c - 1 : filtered.length - 1));
-        return;
-      }
-      if (key.downArrow) {
-        setCursor((c) => (c < filtered.length - 1 ? c + 1 : 0));
-        return;
-      }
-      if (input === " ") {
-        toggleCurrent();
-        return;
-      }
-      if (input && !key.ctrl && !key.meta) {
-        setSearch((s) => s + input);
-        return;
-      }
+    // Navigation
+    if (key.upArrow) { setCursor((c) => (c > 0 ? c - 1 : filtered.length - 1)); return; }
+    if (key.downArrow) { setCursor((c) => (c < filtered.length - 1 ? c + 1 : 0)); return; }
+
+    // Backspace
+    if (key.backspace || key.delete) {
+      if (search) setSearch((s) => s.slice(0, -1));
       return;
     }
 
-    // Normal mode
-    if (key.upArrow) {
-      setCursor((c) => (c > 0 ? c - 1 : filtered.length - 1));
-    } else if (key.downArrow) {
-      setCursor((c) => (c < filtered.length - 1 ? c + 1 : 0));
-    } else if (input === "/") {
-      setSearching(true);
-      setSearch("");
-    } else if (input === " ") {
-      toggleCurrent();
-    } else if (key.return) {
+    // Escape: clear search or quit
+    if (key.escape) {
+      if (search) { setSearch(""); return; }
+      exit();
+      return;
+    }
+
+    // Space: toggle
+    if (input === " ") {
+      const item = filtered[cursor];
+      if (!item) return;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.email)) next.delete(item.email);
+        else next.add(item.email);
+        return next;
+      });
+      return;
+    }
+
+    // Enter: confirm
+    if (key.return) {
       if (selected.size === 0) return;
       setPhase("save");
-    } else if (input === "q" || key.escape) {
-      if (search) {
-        setSearch("");
-      } else {
-        exit();
-      }
+      return;
+    }
+
+    // q: quit (only when not searching)
+    if (!search && input === "q") { exit(); return; }
+
+    // Any printable char: type into search
+    if (input && !key.ctrl && !key.meta) {
+      setSearch((s) => s + input);
     }
   });
-
-  function toggleCurrent() {
-    const item = filtered[cursor];
-    if (!item) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(item.email)) next.delete(item.email);
-      else next.add(item.email);
-      return next;
-    });
-  }
 
   if (phase === "save") {
     return (
@@ -146,26 +116,21 @@ export function EmailPicker({ emailCounts, preSelected, onSubmit }: Props) {
       <Box marginBottom={1} flexDirection="column">
         <Text bold>
           Which of these emails are yours? ({selected.size} selected)
-          {search && (
-            <Text color="cyan"> — {filtered.length} matches</Text>
-          )}
+          {search && <Text color="cyan"> — {filtered.length} matches</Text>}
         </Text>
         <Text dimColor>
-          [Space] toggle  [Enter] confirm  [/] search  [q] quit
+          [Space] toggle  [Enter] confirm  [Esc] clear  Type to search
         </Text>
         <Text color="yellow">
-          TIP: Select ALL emails you've ever used for git commits,
-          including work, personal, and old addresses.
-          Your previous selection is pre-checked. Just hit Enter if correct.
+          TIP: Select ALL your emails (work, personal, old).
+          Previous selection is pre-checked. Just Enter if correct.
         </Text>
       </Box>
 
-      {(searching || search) && (
+      {search && (
         <Box marginBottom={1}>
-          <Text color="cyan" bold>/ </Text>
-          <Text color="cyan">{search}</Text>
-          {searching && <Text color="cyan">█</Text>}
-          {!searching && search && <Text dimColor>  (Esc to clear)</Text>}
+          <Text dimColor>search: </Text>
+          <Text color="cyan" bold>{search}</Text>
         </Box>
       )}
 
@@ -181,20 +146,15 @@ export function EmailPicker({ emailCounts, preSelected, onSubmit }: Props) {
             <Text color={isCursor ? "cyan" : undefined} inverse={isCursor}>
               {checkbox} {email}
             </Text>
-            <Text dimColor>
-              {count} repo{count !== 1 ? "s" : ""}
-            </Text>
+            <Text dimColor>{count} repo{count !== 1 ? "s" : ""}</Text>
             {isFromConfig && <Text color="green">(saved)</Text>}
           </Box>
         );
       })}
 
       {filtered.length > windowSize && (
-        <Text dimColor>
-          {"\n"}{start + 1}-{end} of {filtered.length}
-        </Text>
+        <Text dimColor>{"\n"}{start + 1}-{end} of {filtered.length}</Text>
       )}
-
       {filtered.length === 0 && search && (
         <Text dimColor>No matches for "{search}"</Text>
       )}
