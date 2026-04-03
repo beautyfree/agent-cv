@@ -19,7 +19,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const [selected, setSelected] = useState<Set<string>>(
     new Set(
       projects
-        .filter((p) => p.authorCommitCount > 0 || !p.hasGit)
+        .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0)
         .map((p) => p.id)
     )
   );
