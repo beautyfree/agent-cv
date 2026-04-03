@@ -21,6 +21,28 @@ import {
 } from "../lib/discovery/git-metadata.ts";
 import { detectForgottenGems } from "../lib/discovery/forgotten-gems.ts";
 import { PROMPT_VERSION } from "../lib/types.ts";
+import { ClaudeAdapter } from "../lib/analysis/claude-adapter.ts";
+import { CodexAdapter } from "../lib/analysis/codex-adapter.ts";
+import { CursorAdapter } from "../lib/analysis/cursor-adapter.ts";
+import { APIAdapter } from "../lib/analysis/api-adapter.ts";
+
+/**
+ * Get a fallback adapter different from the primary one.
+ * Tries: api → claude → codex → cursor (skipping primary).
+ */
+async function getFallbackAdapter(primaryName: string): Promise<AgentAdapter | null> {
+  const candidates: Array<{ name: string; adapter: AgentAdapter }> = [
+    { name: "api", adapter: new APIAdapter() },
+    { name: "claude", adapter: new ClaudeAdapter() },
+    { name: "codex", adapter: new CodexAdapter() },
+    { name: "cursor", adapter: new CursorAdapter() },
+  ];
+  for (const { name, adapter } of candidates) {
+    if (name === primaryName) continue;
+    if (await adapter.isAvailable()) return adapter;
+  }
+  return null;
+}
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
 
 export const args = z.tuple([
@@ -292,6 +314,9 @@ export default function Generate({
             continue;
           }
 
+          // Try to get a fallback adapter for retries
+          const fallbackAdapter = await getFallbackAdapter(resolvedAgentName);
+
           await Promise.all(
             batch.map(async (project) => {
               try {
@@ -301,6 +326,23 @@ export default function Generate({
                 analysis.promptVersion = PROMPT_VERSION;
                 project.analysis = analysis;
               } catch (err: any) {
+                // Try fallback adapter if primary fails
+                if (fallbackAdapter) {
+                  try {
+                    const context = await buildProjectContext(project);
+                    const analysis = await fallbackAdapter.analyze(context);
+                    analysis.analyzedAtCommit = project.lastCommit || "";
+                    analysis.promptVersion = PROMPT_VERSION;
+                    analysis.analyzedBy = fallbackAdapter.name + " (fallback)";
+                    project.analysis = analysis;
+                    console.error(
+                      `  ${project.displayName}: primary failed, used ${fallbackAdapter.name} fallback`
+                    );
+                    return;
+                  } catch {
+                    // fallback also failed
+                  }
+                }
                 console.error(
                   `Warning: Failed to analyze ${project.displayName}: ${err.message}`
                 );
