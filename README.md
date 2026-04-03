@@ -127,4 +127,4 @@ Built with [Bun](https://bun.sh), [Ink](https://github.com/vadimdemedes/ink) (Re
 
 ## License
 
-[Source Available](LICENSE). Free for personal and company use. You cannot offer this as a hosted service or sell it as a product. See [LICENSE](LICENSE) for details.
+[Proprietary](LICENSE). Source available for reference. Use is subject to the [agent-cv Terms of Service](https://agent-cv.dev/terms).

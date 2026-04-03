@@ -34,7 +34,7 @@
     "zod": "^4.3.6"
   },
   "keywords": ["cv", "resume", "portfolio", "developer", "git", "ai", "cli"],
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "SEE LICENSE IN LICENSE FILE",
   "repository": {
     "type": "git",
     "url": "https://github.com/agent-cv/agent-cv"

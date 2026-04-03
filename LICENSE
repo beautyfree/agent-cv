@@ -1,34 +1,24 @@
-Agent CV Source Available License (ACSAL) version 1.0
+Copyright (c) 2026-present agent-cv. All rights reserved.
 
-Copyright (c) 2026-present agent-cv
+The code in this repository is made available for reference purposes
+only. Use of this software is subject to the agent-cv Terms of Service
+at https://agent-cv.dev/terms.
 
-This software is source-available. You can view, run, and modify
-the code subject to the following terms.
+You MAY:
+- View and study the source code.
+- Submit pull requests to improve the official agent-cv product.
+- Run the software for personal, non-commercial evaluation.
 
-ALLOWED:
+You MAY NOT:
+- Use this software, or any part of it, in any other product or service.
+- Copy, modify, merge, publish, distribute, sublicense, or sell copies
+  of this software outside of the official agent-cv distribution.
+- Use this software to build or operate a competing product or service.
 
-- Personal use: generate CVs for yourself.
-- Company use: generate CVs for employees within your organization.
-- Integrate the CLI into your internal tools and CI/CD pipelines.
-- Fork and modify the code for your own use.
-- Contribute patches back to the project.
+All contributions to this repository are subject to the agent-cv
+Contributor License Agreement. By submitting a pull request, you agree
+that your contributions become the property of agent-cv.
 
-NOT ALLOWED:
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
-- Offer a hosted service (SaaS, API, or website) that uses this
-  software or its derivatives to generate CVs, portfolios, or
-  developer profiles for third parties, whether free or paid.
-  This is the exclusive right of agent-cv.dev.
-- Sell, rebrand, or redistribute the software as a product.
-- Remove or alter this license in derivative works.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-For commercial licensing (e.g. embedding in your product, offering
-as a managed service), contact hello@agent-cv.dev.
+For questions, contact hello@agent-cv.dev.
