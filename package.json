@@ -1,0 +1,29 @@
+{
+  "name": "llm-cv",
+  "version": "0.1.0",
+  "description": "Generate technical CVs from your local project directories using AI",
+  "type": "module",
+  "bin": {
+    "llm-cv": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "test": "bun test",
+    "build": "bun compile src/cli.ts --outfile dist/llm-cv"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "ink": "^6.8.0",
+    "pastel": "^4.0.1",
+    "react": "^19.2.4",
+    "simple-git": "^3.33.0",
+    "zod": "^4.3.6"
+  }
+}

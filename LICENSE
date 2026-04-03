@@ -1,0 +1,36 @@
+Agent CV Source Available License (ACSAL) version 1.0
+
+Copyright (c) 2026-present agent-cv
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to use, copy, and modify the Software for any purpose,
+including commercial use, subject to the following conditions:
+
+1. You MAY use the Software to generate CVs, portfolios, and related
+   documents for yourself, your team, or your clients.
+
+2. You MAY NOT use the Software, or any derivative work, to operate a
+   service that competes with agent-cv.dev. A competing service is
+   defined as a hosted product that accepts project data and generates
+   CVs, portfolios, or developer profile pages as a service to third
+   parties.
+
+3. You MAY NOT sell, sublicense, or distribute the Software as a
+   standalone commercial product.
+
+4. You MAY fork, modify, and publish patches. All derivative works
+   must retain this license and copyright notice.
+
+5. You MAY use the Software in internal tools, CI/CD pipelines, and
+   private workflows without restriction.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+For questions about commercial licensing, contact hello@agent-cv.dev.
