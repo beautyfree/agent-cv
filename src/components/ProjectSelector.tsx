@@ -237,6 +237,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
               {"    "}{checkbox} {p.displayName}
             </Text>
             {hasMyCommits && <Text color="green">★ {p.authorCommitCount} my / {p.commitCount} total</Text>}
+            {p.tags.includes("forgotten-gem") && <Text color="yellow">💎 gem</Text>}
             {!p.hasGit && <Text dimColor>no git</Text>}
             {p.hasUncommittedChanges && !hasMyCommits && (
               <Text color="magenta">uncommitted changes</Text>

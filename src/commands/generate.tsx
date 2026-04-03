@@ -18,6 +18,7 @@ import {
   collectAllRepoEmails,
   recountAuthorCommitsBatch,
 } from "../lib/discovery/git-metadata.ts";
+import { detectForgottenGems } from "../lib/discovery/forgotten-gems.ts";
 import type { Project, Inventory } from "../lib/types.ts";
 
 export const args = z.tuple([
@@ -170,6 +171,14 @@ export default function Generate({
               project.authorCommitCount = result.authorCommits;
               project.authorEmail = result.matchedEmail;
             }
+          }
+        }
+
+        // Tag forgotten gems
+        const gems = detectForgottenGems(projects);
+        for (const gem of gems) {
+          if (!gem.tags.includes("forgotten-gem")) {
+            gem.tags.push("forgotten-gem");
           }
         }
 
