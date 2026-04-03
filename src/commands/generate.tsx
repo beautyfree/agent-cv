@@ -252,9 +252,16 @@ export default function Generate({
       try {
         const adapter = resolvedAdapter!;
 
+        const needsAnalysis = (p: Project) => {
+          if (!p.analysis) return true; // never analyzed
+          if (!p.analysis.analyzedAtCommit) return true; // old format, no commit tracking
+          if (p.lastCommit && p.lastCommit !== p.analysis.analyzedAtCommit) return true; // changed since
+          return false;
+        };
+
         const toAnalyze = noCache
           ? selectedProjects
-          : selectedProjects.filter((p) => !p.analysis);
+          : selectedProjects.filter(needsAnalysis);
 
         setProgress({ done: 0, total: toAnalyze.length });
 
@@ -279,6 +286,7 @@ export default function Generate({
           try {
             const context = await buildProjectContext(project);
             const analysis = await adapter.analyze(context);
+            analysis.analyzedAtCommit = project.lastCommit || "";
             project.analysis = analysis;
           } catch (err: any) {
             console.error(

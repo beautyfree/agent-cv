@@ -36,6 +36,8 @@ export interface ProjectAnalysis {
   contributions: string[];
   analyzedAt: string;
   analyzedBy: string;
+  /** Last commit hash or date when analysis was done. Used for cache invalidation. */
+  analyzedAtCommit?: string;
 }
 
 export interface PrivacyAuditResult {
