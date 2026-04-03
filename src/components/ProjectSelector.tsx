@@ -67,12 +67,41 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     return result;
   }, [groups, search]);
 
-  // Build flat row list
+  // Build flat row list (respecting parent collapse)
   const rows = useMemo((): Row[] => {
     const result: Row[] = [];
+
+    // Check if any ancestor group is collapsed
+    function isHiddenByParent(groupPath: string): boolean {
+      for (const collapsedPath of collapsed) {
+        if (collapsedPath === groupPath) continue;
+        const prefix = collapsedPath === "." ? "" : collapsedPath + "/";
+        if (prefix && groupPath.startsWith(prefix)) return true;
+      }
+      return false;
+    }
+
+    // Count items in this group + all nested subgroups
+    function countNested(groupPath: string): { total: number; selected: number } {
+      const prefix = groupPath === "." ? "" : groupPath + "/";
+      let total = 0;
+      let sel = 0;
+      for (const [gp, items] of filteredGroups) {
+        if (gp === groupPath || (prefix && gp.startsWith(prefix))) {
+          total += items.length;
+          sel += items.filter((i) => selected.has(i.project.id)).length;
+        }
+      }
+      return { total, selected: sel };
+    }
+
     for (const [groupPath, items] of filteredGroups) {
-      const selectedCount = items.filter((i) => selected.has(i.project.id)).length;
-      result.push({ kind: "group", path: groupPath, count: items.length, selectedCount });
+      // Skip if a parent group is collapsed
+      if (isHiddenByParent(groupPath)) continue;
+
+      const { total, selected: sel } = countNested(groupPath);
+      result.push({ kind: "group", path: groupPath, count: total, selectedCount: sel });
+
       if (!collapsed.has(groupPath)) {
         for (const item of items) {
           result.push({ kind: "project", project: item.project, relPath: item.relPath });
@@ -126,8 +155,19 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       if (row?.kind === "group") {
         setCollapsed((prev) => {
           const next = new Set(prev);
-          if (next.has(row.path)) next.delete(row.path);
-          else next.add(row.path);
+          if (next.has(row.path)) {
+            // Expand: remove this group and all nested from collapsed
+            next.delete(row.path);
+            const prefix = row.path === "." ? "" : row.path + "/";
+            if (prefix) {
+              for (const key of next) {
+                if (key.startsWith(prefix)) next.delete(key);
+              }
+            }
+          } else {
+            // Collapse: add this group (nested groups hidden automatically)
+            next.add(row.path);
+          }
           return next;
         });
         return;
@@ -160,13 +200,21 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     const row = rows[cursor];
     if (!row) return;
     if (row.kind === "group") {
-      const groupItems = filteredGroups.find(([p]) => p === row.path)?.[1];
-      if (!groupItems) return;
-      const groupIds = groupItems.map((i) => i.project.id);
-      const allSelected = groupIds.every((id) => selected.has(id));
+      // Collect ALL projects in this group AND nested subgroups
+      const prefix = row.path === "." ? "" : row.path + "/";
+      const allIds: string[] = [];
+      for (const [groupPath, items] of filteredGroups) {
+        const isThisGroup = groupPath === row.path;
+        const isNested = prefix && groupPath.startsWith(prefix);
+        if (isThisGroup || isNested) {
+          for (const item of items) allIds.push(item.project.id);
+        }
+      }
+      if (allIds.length === 0) return;
+      const allSelected = allIds.every((id) => selected.has(id));
       setSelected((prev) => {
         const next = new Set(prev);
-        for (const id of groupIds) { if (allSelected) next.delete(id); else next.add(id); }
+        for (const id of allIds) { if (allSelected) next.delete(id); else next.add(id); }
         return next;
       });
     } else {
