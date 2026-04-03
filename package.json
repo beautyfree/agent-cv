@@ -34,7 +34,7 @@
     "zod": "^4.3.6"
   },
   "keywords": ["cv", "resume", "portfolio", "developer", "git", "ai", "cli"],
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/agent-cv/agent-cv"

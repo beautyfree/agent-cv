@@ -127,4 +127,6 @@ Built with [Bun](https://bun.sh), [Ink](https://github.com/vadimdemedes/ink) (Re
 
 ## License
 
-MIT
+[Business Source License 1.1](LICENSE)
+
+Free to use, modify, and distribute. Cannot be used to operate a competing hosted CV service. Converts to MIT on April 3, 2030.
