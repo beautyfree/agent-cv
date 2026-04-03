@@ -160,7 +160,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           [Space] toggle  [Enter] expand/collapse group  [s] submit  [a] all  [q] quit
         </Text>
         <Text dimColor>
-          <Text color="yellow">!</Text> = secrets detected (auto-excluded from AI analysis)
+          <Text color="green">★</Text> = your commits (42/100)  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = no your commits
         </Text>
       </Box>
 
@@ -199,26 +199,34 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         }
 
         // Project row
-        const isSelected = selected.has(row.project.id);
+        const p = row.project;
+        const isSelected = selected.has(p.id);
         const checkbox = isSelected ? "[x]" : "[ ]";
-        const dateStr = row.project.dateRange.start
-          ? `${row.project.dateRange.approximate ? "~" : ""}${row.project.dateRange.start}`
+        const dateStr = p.dateRange.start
+          ? `${p.dateRange.approximate ? "~" : ""}${p.dateRange.start}`
           : "?";
-        const secrets =
-          row.project.privacyAudit?.secretsFound ?? 0;
+        const secrets = p.privacyAudit?.secretsFound ?? 0;
+        const hasMyCommits = p.authorCommitCount > 0;
+
+        // Color: green if you have commits, dim if it's someone else's project
+        const nameColor = isCursor
+          ? "cyan"
+          : hasMyCommits
+            ? undefined
+            : "gray";
 
         return (
-          <Box key={row.project.id} gap={1}>
-            <Text color={isCursor ? "cyan" : undefined} inverse={isCursor}>
-              {"    "}{checkbox} {row.project.displayName}
+          <Box key={p.id} gap={1}>
+            <Text color={nameColor} inverse={isCursor}>
+              {"    "}{checkbox} {p.displayName}
             </Text>
+            {hasMyCommits && (
+              <Text color="green">
+                ★ {p.authorCommitCount}/{p.commitCount}
+              </Text>
+            )}
             <Text dimColor>
-              {row.project.language}
-              {row.project.commitCount > 0
-                ? ` (${row.project.commitCount})`
-                : ""}
-              {" "}
-              {dateStr}
+              {p.language} {dateStr}
             </Text>
             {secrets > 0 && <Text color="yellow">!</Text>}
           </Box>
