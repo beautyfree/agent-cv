@@ -107,8 +107,10 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     for (const [groupPath, items] of filteredGroups) {
       if (isHiddenByParent(groupPath)) continue;
 
-      const absDepth = groupPath === "." ? 0 : groupPath.split("/").length;
-      const depth = absDepth - minDepth;
+      const segments = groupPath === "." ? 0 : groupPath.split("/").length;
+      // Subgroups indent same as sibling projects (parentDepth + 2)
+      // Top-level groups stay at 0
+      const depth = segments <= minDepth ? 0 : (segments - minDepth) * 2;
       const { total, selected: sel } = countNested(groupPath);
       result.push({ kind: "group", path: groupPath, count: total, selectedCount: sel, depth });
 
