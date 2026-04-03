@@ -1,17 +1,23 @@
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
+import { relative } from "node:path";
 import type { Project } from "../lib/types.ts";
 
 interface Props {
   projects: Project[];
+  scanRoot: string;
   onSubmit: (selected: Project[]) => void;
 }
 
 /**
  * Interactive multi-select for choosing which projects to include in CV.
- * Arrow keys to navigate, Space to toggle, Enter to confirm, 'a' to toggle all.
+ * Shows relative path from scan root so users can distinguish
+ * archive/my-app from active/my-app.
+ *
+ * Arrow keys to navigate, Space to toggle, Enter to confirm,
+ * 'a' to toggle all, 'q' to quit.
  */
-export function ProjectSelector({ projects, onSubmit }: Props) {
+export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const { exit } = useApp();
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(
@@ -42,7 +48,6 @@ export function ProjectSelector({ projects, onSubmit }: Props) {
         return next;
       });
     } else if (input === "a") {
-      // Toggle all
       if (selected.size === projects.length) {
         setSelected(new Set());
       } else {
@@ -72,6 +77,13 @@ export function ProjectSelector({ projects, onSubmit }: Props) {
         const isSelected = selected.has(project.id);
         const isCursor = globalIndex === cursor;
         const checkbox = isSelected ? "[x]" : "[ ]";
+
+        // Show relative path from scan root
+        const relPath = relative(scanRoot, project.path);
+        // If the project is directly in the scan root, just show the name
+        // If nested, show the full relative path (e.g. "archive/old-app")
+        const displayPath = relPath || project.displayName;
+
         const dateStr = project.dateRange.start
           ? `${project.dateRange.approximate ? "~" : ""}${project.dateRange.start}`
           : "?";
@@ -83,7 +95,7 @@ export function ProjectSelector({ projects, onSubmit }: Props) {
               bold={isCursor}
               inverse={isCursor}
             >
-              {checkbox} {project.displayName}
+              {checkbox} {displayPath}
             </Text>
             <Text dimColor>
               {project.language}

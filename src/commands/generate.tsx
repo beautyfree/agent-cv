@@ -202,7 +202,7 @@ export default function Generate({
 
   if (phase === "selecting") {
     return (
-      <ProjectSelector projects={allProjects} onSubmit={handleSelection} />
+      <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />
     );
   }
 
