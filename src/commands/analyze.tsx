@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import { z } from "zod/v4";
-import { ClaudeAdapter } from "../lib/analysis/claude-adapter.ts";
+import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
 import { buildProjectContext } from "../lib/analysis/context-builder.ts";
 import {
   readInventory,
@@ -16,8 +16,8 @@ export const args = z.tuple([
 export const options = z.object({
   agent: z
     .string()
-    .default("claude")
-    .describe("Agent to use for analysis (claude)"),
+    .default("auto")
+    .describe("Agent to use: auto, claude, codex, api"),
 });
 
 type Props = {
@@ -35,20 +35,15 @@ export default function Analyze({ args: [projectPath], options: { agent } }: Pro
   useEffect(() => {
     async function run() {
       try {
-        // Find the agent adapter
-        const adapter = new ClaudeAdapter();
-        const available = await adapter.isAvailable();
-
-        if (!available) {
-          setError(
-            `Agent "${agent}" not found in PATH.\n\n` +
-            "Install one of:\n" +
-            "  - Claude Code: https://claude.ai/claude-code\n" +
-            "  - Or set an API key: export OPENROUTER_API_KEY=...\n"
-          );
+        let resolved;
+        try {
+          resolved = await resolveAdapter(agent);
+        } catch (err: any) {
+          setError(err.message);
           setStatus("error");
           return;
         }
+        const adapter = resolved.adapter;
 
         // Find project in inventory or build a minimal one
         setStatus("building");

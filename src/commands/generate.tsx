@@ -8,7 +8,7 @@ import {
   mergeInventory,
 } from "../lib/inventory/store.ts";
 import { buildProjectContext } from "../lib/analysis/context-builder.ts";
-import { ClaudeAdapter } from "../lib/analysis/claude-adapter.ts";
+import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
 import { MarkdownRenderer } from "../lib/output/markdown-renderer.ts";
 import { ProjectSelector } from "../components/ProjectSelector.tsx";
 import { EmailPicker } from "../components/EmailPicker.tsx";
@@ -27,7 +27,7 @@ export const args = z.tuple([
 
 export const options = z.object({
   output: z.string().optional().describe("Output file path (default: stdout)"),
-  agent: z.string().default("claude").describe("Agent to use for analysis"),
+  agent: z.string().default("auto").describe("Agent to use: auto, claude, codex, api"),
   noCache: z.boolean().default(false).describe("Force fresh analysis, ignore cache"),
   dryRun: z.boolean().default(false).describe("Show what would be sent to the LLM without sending"),
   all: z.boolean().default(false).describe("Skip interactive selection, analyze all projects"),
@@ -220,18 +220,15 @@ export default function Generate({
 
     async function analyzeAndRender() {
       try {
-        const adapter = new ClaudeAdapter();
-        const available = await adapter.isAvailable();
-
-        if (!available) {
-          setError(
-            `Agent "${agent}" not found in PATH.\n\n` +
-              "Install Claude Code: https://claude.ai/claude-code\n" +
-              "Or set an API key: export OPENROUTER_API_KEY=..."
-          );
+        let resolved;
+        try {
+          resolved = await resolveAdapter(agent);
+        } catch (err: any) {
+          setError(err.message);
           setPhase("error");
           return;
         }
+        const adapter = resolved.adapter;
 
         setPhase("analyzing");
         const toAnalyze = noCache
