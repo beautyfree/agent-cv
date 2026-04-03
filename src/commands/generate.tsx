@@ -20,6 +20,7 @@ import {
   recountAuthorCommitsBatch,
 } from "../lib/discovery/git-metadata.ts";
 import { detectForgottenGems } from "../lib/discovery/forgotten-gems.ts";
+import { PROMPT_VERSION } from "../lib/types.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
 
 export const args = z.tuple([
@@ -253,9 +254,10 @@ export default function Generate({
         const adapter = resolvedAdapter!;
 
         const needsAnalysis = (p: Project) => {
-          if (!p.analysis) return true; // never analyzed
-          if (!p.analysis.analyzedAtCommit) return true; // old format, no commit tracking
-          if (p.lastCommit && p.lastCommit !== p.analysis.analyzedAtCommit) return true; // changed since
+          if (!p.analysis) return true;
+          if (!p.analysis.analyzedAtCommit) return true;
+          if (p.lastCommit && p.lastCommit !== p.analysis.analyzedAtCommit) return true;
+          if (p.analysis.promptVersion !== PROMPT_VERSION) return true;
           return false;
         };
 
@@ -287,6 +289,7 @@ export default function Generate({
             const context = await buildProjectContext(project);
             const analysis = await adapter.analyze(context);
             analysis.analyzedAtCommit = project.lastCommit || "";
+            analysis.promptVersion = PROMPT_VERSION;
             project.analysis = analysis;
           } catch (err: any) {
             console.error(
