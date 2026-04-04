@@ -29,8 +29,9 @@ export async function generateProfileInsights(
       const commits = p.authorCommitCount || p.commitCount;
       const lines = p.size?.lines ? `${Math.round(p.size.lines / 1000)}K lines` : "";
       const date = p.dateRange.start?.split("-")[0] || "?";
+      const stars = p.stars ? `, ⭐${p.stars}` : "";
       const analyzed = p.analysis ? "" : " [not analyzed]";
-      return `- ${p.displayName} (${date}, ${commits} commits${lines ? ", " + lines : ""}): ${tech}. ${desc}${analyzed}`;
+      return `- ${p.displayName} (${date}, ${commits} commits${stars}${lines ? ", " + lines : ""}): ${tech}. ${desc}${analyzed}`;
     })
     .join("\n");
 
@@ -64,6 +65,7 @@ export async function generateProfileInsights(
     "Guidelines:",
     "- bio: NO generic phrases (passionate, problem-solver, results-driven). Be concrete.",
     "- highlights: Pick 3-5 projects that best demonstrate their abilities. Choose based on:",
+    "  * GitHub stars (⭐) — community validation, higher weight",
     "  * Technical complexity (many commits, large codebase, diverse tech stack)",
     "  * Interesting/unusual domain (games, blockchain, AI agents, hardware)",
     "  * Shows growth (early simple projects vs recent complex ones)",

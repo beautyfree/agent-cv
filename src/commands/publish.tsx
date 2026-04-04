@@ -260,7 +260,8 @@ function sanitizeForPublish(
 ) {
   const { profile, insights } = inventory;
   const projects = inventory.projects.filter((p) => p.included !== false).map((p: Project) => {
-    const isPublic = publicFlags[p.id] ?? false;
+    const info = publicFlags[p.id];
+    const isPublic = info?.isPublic ?? false;
     return {
       id: p.id, displayName: p.displayName, type: p.type, language: p.language,
       frameworks: p.frameworks, dateRange: p.dateRange, hasGit: p.hasGit,
@@ -270,6 +271,7 @@ function sanitizeForPublish(
       analysis: p.analysis,
       tags: p.tags, included: true,
       remoteUrl: isPublic ? p.remoteUrl : null,
+      stars: info?.stars || undefined,
       isPublic,
     };
   });
