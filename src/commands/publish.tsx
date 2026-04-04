@@ -320,6 +320,9 @@ export default function Publish({ args, options }: Props) {
   if (phase === "confirming") return (
     <Box flexDirection="column" gap={1}>
       <Text bold>Ready to publish your profile:</Text>
+      {!dir && inventory?.lastScan && (
+        <Text color="gray">  Using inventory from {new Date(inventory.lastScan).toLocaleDateString()} ({inventory.scanPaths?.join(", ")})</Text>
+      )}
       <Text color="gray">  {totalCount} projects will appear on your page</Text>
       <Text color="gray">  {publicCount} with GitHub links (public repos only)</Text>
       <Text color="gray">  {totalCount - publicCount} private (URLs hidden)</Text>

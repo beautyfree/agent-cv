@@ -33,6 +33,11 @@ export default function Stats({}: Props) {
   if (error) return <Text color="red">Error: {error}</Text>;
   if (!inventory) return <Text color="yellow">Loading inventory...</Text>;
 
+  // Cache info
+  const lastScan = inventory.lastScan ? new Date(inventory.lastScan) : null;
+  const scanAge = lastScan ? timeSince(lastScan) : "unknown";
+  const scanPaths = inventory.scanPaths?.join(", ") || "unknown";
+
   const allProjects = inventory.projects.filter((p) => !p.tags.includes("removed"));
 
   // Only count "my" projects in stats
@@ -74,6 +79,10 @@ export default function Stats({}: Props) {
 
   return (
     <Box flexDirection="column">
+      <Text dimColor>
+        Inventory: {allProjects.length} projects from {scanPaths} (scanned {scanAge})
+      </Text>
+      <Text> </Text>
       <Text bold>Tech Evolution</Text>
       <Text> </Text>
       {years.map((year) => {
@@ -124,6 +133,17 @@ export default function Stats({}: Props) {
       </Text>
     </Box>
   );
+}
+
+function timeSince(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 export const description = "Show tech stack evolution timeline and language breakdown";
