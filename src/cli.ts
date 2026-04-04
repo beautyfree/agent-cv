@@ -73,4 +73,23 @@ program
     render(React.createElement(Stats, { options: opts }));
   });
 
+// publish
+program
+  .command("publish")
+  .description("Publish your portfolio to agent-cv.dev")
+  .option("--bio <text>", "Custom bio/headline for your portfolio")
+  .action(async (opts: any) => {
+    const { default: Publish } = await import("./commands/publish.tsx");
+    render(React.createElement(Publish, { options: opts }));
+  });
+
+// unpublish
+program
+  .command("unpublish")
+  .description("Remove your portfolio from agent-cv.dev")
+  .action(async () => {
+    const { default: Unpublish } = await import("./commands/unpublish.tsx");
+    render(React.createElement(Unpublish, {}));
+  });
+
 await program.parseAsync();
