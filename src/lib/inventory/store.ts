@@ -5,12 +5,15 @@ import { randomBytes } from "node:crypto";
 import type { Inventory, Project, InventoryProfile, ProfileInsights } from "../types.ts";
 import { INVENTORY_VERSION } from "../types.ts";
 
-const DEFAULT_DIR = join(process.env.HOME || "~", ".agent-cv");
 const INVENTORY_FILE = "inventory.json";
 const OLD_CONFIG_FILE = "config.json";
 
+function getBaseDir(): string {
+  return join(process.env.HOME || "~", ".agent-cv");
+}
+
 function getInventoryPath(): string {
-  return join(DEFAULT_DIR, INVENTORY_FILE);
+  return join(getBaseDir(), INVENTORY_FILE);
 }
 
 function defaultProfile(): InventoryProfile {
@@ -32,7 +35,7 @@ function emptyInventory(): Inventory {
  * Migrate old config.json into inventory if it exists.
  */
 async function migrateOldConfig(inventory: Inventory): Promise<boolean> {
-  const configPath = join(DEFAULT_DIR, OLD_CONFIG_FILE);
+  const configPath = join(getBaseDir(), OLD_CONFIG_FILE);
   try {
     const content = await readFile(configPath, "utf-8");
     const config = JSON.parse(content);
