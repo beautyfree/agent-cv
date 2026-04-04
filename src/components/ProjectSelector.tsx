@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { relative, dirname } from "node:path";
 import type { Project } from "../lib/types.ts";
+import { PROMPT_VERSION } from "../lib/types.ts";
 
 interface Props {
   projects: Project[];
@@ -323,6 +324,26 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         <Text dimColor>
           <Text color="green">★</Text> = your commits  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = not yours
         </Text>
+        {(() => {
+          const sel = projects.filter((p) => selected.has(p.id));
+          const needsAnalysis = sel.filter((p) => {
+            if (!p.analysis) return true;
+            if (!p.analysis.analyzedAtCommit) return true;
+            if (p.lastCommit && p.lastCommit !== p.analysis.analyzedAtCommit) return true;
+            if (p.analysis.promptVersion !== PROMPT_VERSION) return true;
+            return false;
+          });
+          const cached = sel.length - needsAnalysis.length;
+          const mins = Math.max(1, Math.ceil(needsAnalysis.length * 15 / 60));
+          return (
+            <Text dimColor>
+              {cached > 0 && <Text color="green">{cached} cached</Text>}
+              {cached > 0 && needsAnalysis.length > 0 && ", "}
+              {needsAnalysis.length > 0 && <Text color="yellow">{needsAnalysis.length} to analyze (~{mins} min)</Text>}
+              {needsAnalysis.length === 0 && cached > 0 && <Text> — all cached, no LLM calls needed</Text>}
+            </Text>
+          );
+        })()}
       </Box>
 
       {search && (
