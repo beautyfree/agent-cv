@@ -12,6 +12,7 @@ import {
   collectEmails,
   recountAndTag,
   analyzeProjects,
+  enrichGitHubData,
   type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
@@ -211,9 +212,16 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   const [failedProjects, setFailedProjects] = useState<Array<{ project: Project; error: string }>>([]);
 
   function finishAnalysis() {
-    // Generate profile insights (bio, highlights, narrative, skills)
     async function finish() {
       try {
+        // Enrich with GitHub data (stars, isPublic)
+        if (!dryRun) {
+          setCurrent("fetching GitHub data...");
+          await enrichGitHubData(selectedProjects);
+          if (inventory) await writeInventory(inventory);
+        }
+
+        // Generate profile insights (bio, highlights, narrative, skills)
         if (!dryRun && inventory) {
           const analyzed = selectedProjects.filter((p) => p.analysis);
           const fingerprint = createHash("md5")

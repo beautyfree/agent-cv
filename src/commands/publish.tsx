@@ -116,31 +116,17 @@ export default function Publish({ args, options }: Props) {
     setPhase("checking-public");
   }, []);
 
-  const [publicFlags, setPublicFlags] = useState<Record<string, { isPublic: boolean; stars: number }>>({});
-
-  // Step 5a: Check public repos
+  // Step 5a: Count public repos (data already enriched by pipeline)
   useEffect(() => {
     if (phase !== "checking-public") return;
-    async function check() {
-      try {
-        setTotalCount(selectedProjects.length);
-        setAnalyzedCount(selectedProjects.filter((p) => p.analysis).length);
-        const flags = await checkPublicRepos(selectedProjects);
-        // Save stars to projects
-        for (const p of selectedProjects) {
-          const info = flags[p.id];
-          if (info) p.stars = info.stars;
-        }
-        setPublicFlags(flags);
-        setPublicCount(Object.values(flags).filter((f) => f.isPublic).length);
-        if (options.yes) {
-          doPublish();
-          return;
-        }
-        setPhase("confirming");
-      } catch (e: any) { setError(e.message); setPhase("error"); }
+    setTotalCount(selectedProjects.length);
+    setAnalyzedCount(selectedProjects.filter((p) => p.analysis).length);
+    setPublicCount(selectedProjects.filter((p) => p.isPublic).length);
+    if (options.yes) {
+      doPublish();
+      return;
     }
-    check();
+    setPhase("confirming");
   }, [phase, selectedProjects]);
 
   // Confirmation — only active in confirming phase without --yes
@@ -152,7 +138,7 @@ export default function Publish({ args, options }: Props) {
   async function doPublish() {
     setPhase("publishing");
     try {
-      const payload = sanitizeForPublish(inventory!, publicFlags, options.bio);
+      const payload = sanitizeForPublish(inventory!, options.bio);
       const result = await publishToApi(jwt, payload);
       await track("publish_complete", { projects: payload.inventory.projects.length });
       await flushTelemetry();
@@ -230,38 +216,14 @@ export default function Publish({ args, options }: Props) {
   );
 }
 
-async function checkPublicRepos(projects: Project[]): Promise<Record<string, { isPublic: boolean; stars: number }>> {
-  const flags: Record<string, { isPublic: boolean; stars: number }> = {};
-  const toCheck = projects.filter((p) => p.remoteUrl?.includes("github.com"));
-  for (let i = 0; i < toCheck.length; i += 10) {
-    const batch = toCheck.slice(i, i + 10);
-    const results = await Promise.all(batch.map(async (p) => {
-      try {
-        const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
-        if (!match) return { id: p.id, isPublic: false, stars: 0 };
-        const res = await fetch(`https://api.github.com/repos/${match[1]}`, { redirect: "follow", headers: { "User-Agent": "agent-cv" } });
-        if (res.status === 200) {
-          const data = await res.json();
-          return { id: p.id, isPublic: !data.private, stars: data.stargazers_count || 0 };
-        }
-        return { id: p.id, isPublic: false, stars: 0 };
-      } catch { return { id: p.id, isPublic: false, stars: 0 }; }
-    }));
-    for (const r of results) flags[r.id] = { isPublic: r.isPublic, stars: r.stars };
-  }
-  for (const p of projects) { if (!(p.id in flags)) flags[p.id] = { isPublic: false, stars: 0 }; }
-  return flags;
-}
 
 function sanitizeForPublish(
   inventory: Inventory,
-  publicFlags: Record<string, { isPublic: boolean; stars: number }>,
   bioOverride?: string
 ) {
   const { profile, insights } = inventory;
   const projects = inventory.projects.filter((p) => p.included !== false).map((p: Project) => {
-    const info = publicFlags[p.id];
-    const isPublic = info?.isPublic ?? false;
+    const isPublic = p.isPublic ?? false;
     return {
       id: p.id, displayName: p.displayName, type: p.type, language: p.language,
       frameworks: p.frameworks, dateRange: p.dateRange, hasGit: p.hasGit,
@@ -271,7 +233,7 @@ function sanitizeForPublish(
       analysis: p.analysis,
       tags: p.tags, included: true,
       remoteUrl: isPublic ? p.remoteUrl : null,
-      stars: info?.stars || undefined,
+      stars: p.stars || undefined,
       isPublic,
     };
   });

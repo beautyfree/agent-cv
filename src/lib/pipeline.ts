@@ -191,3 +191,39 @@ export async function analyzeProjects(
 export function countUnanalyzed(projects: Project[]): number {
   return projects.filter((p) => p.included !== false && !p.analysis).length;
 }
+
+/**
+ * Enrich projects with GitHub data (stars, isPublic).
+ * Batches API calls 10 at a time. Only checks projects with github.com remoteUrl.
+ */
+export async function enrichGitHubData(
+  projects: Project[],
+  onProgress?: (done: number, total: number) => void
+): Promise<void> {
+  const toCheck = projects.filter((p) => p.remoteUrl?.includes("github.com"));
+  if (toCheck.length === 0) return;
+
+  const BATCH = 10;
+  let done = 0;
+
+  for (let i = 0; i < toCheck.length; i += BATCH) {
+    const batch = toCheck.slice(i, i + BATCH);
+    await Promise.all(batch.map(async (p) => {
+      try {
+        const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
+        if (!match) return;
+        const res = await fetch(`https://api.github.com/repos/${match[1]}`, {
+          redirect: "follow",
+          headers: { "User-Agent": "agent-cv" },
+        });
+        if (res.status === 200) {
+          const data = await res.json();
+          p.stars = data.stargazers_count || 0;
+          p.isPublic = !data.private;
+        }
+      } catch { /* skip */ }
+    }));
+    done += batch.length;
+    onProgress?.(done, toCheck.length);
+  }
+}

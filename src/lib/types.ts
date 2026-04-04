@@ -32,6 +32,7 @@ export interface Project {
   tags: string[];
   included: boolean;
   remoteUrl?: string;
+  isPublic?: boolean;
   stars?: number;
   authorEmail?: string;
 }
