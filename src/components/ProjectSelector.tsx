@@ -409,20 +409,24 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         const nameColor = isCursor ? "cyan" : isMyProject ? undefined : "gray";
         const indent = "   ".repeat(row.depth);
 
+        const name = p.displayName.length > 30 ? p.displayName.slice(0, 28) + ".." : p.displayName;
+        const meta: string[] = [];
+        if (hasMyCommits) meta.push(`★${p.authorCommitCount}/${p.commitCount}`);
+        if (p.tags.includes("forgotten-gem")) meta.push("💎");
+        if (p.tags.includes("new")) meta.push("NEW");
+        if (!p.hasGit) meta.push("no git");
+        if (p.hasUncommittedChanges && !hasMyCommits) meta.push("uncommitted");
+        meta.push(p.language);
+        meta.push(dateStr);
+        if (secrets > 0) meta.push("!");
+
         return (
-          <Box key={p.id} gap={1}>
+          <Box key={p.id}>
             <Text color={nameColor} inverse={isCursor}>
-              {indent}  {checkbox} {p.displayName}
+              {indent}  {checkbox} {name}
             </Text>
-            {p.tags.includes("new") && <Text color="blue" bold>NEW</Text>}
-            {hasMyCommits && <Text color="green">★ {p.authorCommitCount} my / {p.commitCount} total</Text>}
-            {p.tags.includes("forgotten-gem") && <Text color="yellow">💎 gem</Text>}
-            {!p.hasGit && <Text dimColor>no git</Text>}
-            {p.hasUncommittedChanges && !hasMyCommits && (
-              <Text color="magenta">uncommitted changes</Text>
-            )}
-            <Text dimColor>{p.language} {dateStr}</Text>
-            {secrets > 0 && <Text color="yellow">!</Text>}
+            <Text> </Text>
+            <Text dimColor>{meta.join(" · ")}</Text>
           </Box>
         );
       })}
