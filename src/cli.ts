@@ -80,6 +80,9 @@ program
   .argument("[directory]", "Directory to scan (uses existing inventory if omitted)")
   .option("--bio <text>", "Custom bio/headline for your portfolio")
   .option("--no-open", "Don't open browser after publishing")
+  .option("--all", "Skip project picker, include everything", false)
+  .option("--agent <name>", "Agent to use: auto, claude, codex, cursor, api", "auto")
+  .option("--email <emails>", "Email(s) to filter by (comma-separated)")
   .action(async (directory: string | undefined, opts: any) => {
     const { default: Publish } = await import("./commands/publish.tsx");
     render(React.createElement(Publish, { args: directory ? [directory] : [], options: opts }));
