@@ -13,8 +13,7 @@ import {
   type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
-import { hasBeenPrompted, setTelemetryEnabled, track } from "../lib/telemetry.ts";
-import { TelemetryPrompt } from "./TelemetryPrompt.tsx";
+import { markNoticeSeen, track } from "../lib/telemetry.ts";
 
 export interface PipelineOptions {
   directory: string;
@@ -38,7 +37,7 @@ interface Props {
 }
 
 type Phase =
-  | "telemetry-prompt" | "scanning" | "picking-emails" | "recounting" | "selecting"
+  | "init" | "scanning" | "picking-emails" | "recounting" | "selecting"
   | "picking-agent" | "analyzing" | "analysis-failed" | "done";
 
 /**
@@ -48,7 +47,8 @@ type Phase =
 export function Pipeline({ options, onComplete, onError }: Props) {
   const { directory, all: selectAll, email, agent = "auto", noCache, dryRun } = options;
 
-  const [phase, setPhase] = useState<Phase>("telemetry-prompt");
+  const [phase, setPhase] = useState<Phase>("init");
+  const [showTelemetryNotice, setShowTelemetryNotice] = useState(false);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Project[]>([]);
   const [inventory, setInventory] = useState<Inventory | null>(null);
@@ -69,19 +69,14 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   const [current, setCurrent] = useState("");
   const [projectStatuses, setProjectStatuses] = useState<Map<string, { status: ProjectStatus; detail?: string }>>(new Map());
 
-  // Phase 0: Telemetry prompt (first run only)
+  // Phase 0: Show telemetry notice (first run only), then start scanning
   useEffect(() => {
-    if (phase !== "telemetry-prompt") return;
-    hasBeenPrompted().then((prompted) => {
-      if (prompted) setPhase("scanning");
-      // else stay on telemetry-prompt and show UI
+    if (phase !== "init") return;
+    markNoticeSeen().then((alreadySeen) => {
+      if (!alreadySeen) setShowTelemetryNotice(true);
+      setPhase("scanning");
     });
   }, [phase]);
-
-  const handleTelemetryChoice = useCallback(async (enabled: boolean) => {
-    await setTelemetryEnabled(enabled);
-    setPhase("scanning");
-  }, []);
 
   // Phase 1: Scan
   useEffect(() => {
@@ -258,9 +253,14 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   });
 
   // Render based on phase
-  if (phase === "telemetry-prompt") return <TelemetryPrompt onChoice={handleTelemetryChoice} />;
+  if (phase === "init") return null;
   if (phase === "scanning") return (
     <Box flexDirection="column">
+      {showTelemetryNotice && (
+        <Box marginBottom={1} flexDirection="column">
+          <Text dimColor>Anonymous telemetry enabled. Disable: agent-cv config or AGENT_CV_TELEMETRY=off</Text>
+        </Box>
+      )}
       <Text color="yellow">Scanning {directory}...</Text>
       {scanCount > 0 && <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}{lastFound ? ` — ${lastFound}` : ""}</Text>}
       {scanDir && <Text dimColor>{scanDir}</Text>}

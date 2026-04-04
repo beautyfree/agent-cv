@@ -57,20 +57,23 @@ async function getAnonymousId(): Promise<string> {
 }
 
 /**
- * Check if telemetry is enabled.
+ * Check if telemetry is enabled. ON by default — user opts out via config.
  */
 export async function isTelemetryEnabled(): Promise<boolean> {
   if (process.env.AGENT_CV_TELEMETRY === "off") return false;
   const state = await readState();
-  return state.enabled ?? false;
+  return state.enabled ?? true;
 }
 
 /**
- * Check if user has been prompted about telemetry.
+ * Check if user has seen the telemetry notice.
+ * Returns true if notice was already shown.
  */
-export async function hasBeenPrompted(): Promise<boolean> {
+export async function markNoticeSeen(): Promise<boolean> {
   const state = await readState();
-  return state.prompted ?? false;
+  if (state.prompted) return true;
+  await writeState({ ...state, prompted: true, enabled: state.enabled ?? true });
+  return false;
 }
 
 /**
