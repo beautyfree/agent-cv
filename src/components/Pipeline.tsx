@@ -54,10 +54,11 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [resolvedAdapter, setResolvedAdapter] = useState<AgentAdapter | null>(null);
 
-  // Scan progress
+  // Scan progress (throttled to avoid excessive re-renders)
   const [scanCount, setScanCount] = useState(0);
   const [scanDir, setScanDir] = useState("");
   const [lastFound, setLastFound] = useState("");
+  const scanThrottle = React.useRef(0);
 
   // Email picker state
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
@@ -85,8 +86,21 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       try {
         await track("command_start", { command: "pipeline" });
         const result = await scanAndMerge(directory, {
-          onProjectFound: (p, total) => { setScanCount(total); setLastFound(p.displayName); },
-          onDirectoryEnter: (dir) => { setScanDir(dir.replace(directory, "").replace(/^\//, "") || "."); },
+          onProjectFound: (p, total) => {
+            const now = Date.now();
+            if (now - scanThrottle.current > 150) {
+              scanThrottle.current = now;
+              setScanCount(total);
+              setLastFound(p.displayName);
+            }
+          },
+          onDirectoryEnter: (dir) => {
+            const now = Date.now();
+            if (now - scanThrottle.current > 150) {
+              scanThrottle.current = now;
+              setScanDir(dir.replace(directory, "").replace(/^\//, "") || ".");
+            }
+          },
         });
 
         if (result.projects.length === 0) {
