@@ -1,10 +1,10 @@
 {
   "name": "agent-cv",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Generate technical CVs from your local project directories using AI",
   "type": "module",
   "bin": {
-    "agent-cv": "./dist/cli.js"
+    "agent-cv": "dist/cli.js"
   },
   "files": [
     "dist/cli.js"
@@ -33,11 +33,19 @@
     "simple-git": "^3.33.0",
     "zod": "^4.3.6"
   },
-  "keywords": ["cv", "resume", "portfolio", "developer", "git", "ai", "cli"],
+  "keywords": [
+    "cv",
+    "resume",
+    "portfolio",
+    "developer",
+    "git",
+    "ai",
+    "cli"
+  ],
   "license": "SEE LICENSE IN LICENSE FILE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/agent-cv/agent-cv"
+    "url": "git+https://github.com/agent-cv/agent-cv.git"
   },
   "homepage": "https://agent-cv.dev"
 }
