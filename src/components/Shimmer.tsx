@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Text } from "ink";
 
-const RAINBOW = [
-  "#FF6B6B", "#FF8E53", "#FFC107", "#4CAF50", "#2196F3", "#9C27B0", "#FF6B6B",
+// Soft pastel palette, similar to Claude Code buddy
+const COLORS = [
+  "#B8A9E8", "#9AC8E8", "#A8D8C8", "#D4C09E", "#C8A0B8",
 ];
 
 interface Props {
@@ -10,14 +11,13 @@ interface Props {
 }
 
 /**
- * Rainbow shimmer text — cycles gradient colors across characters.
- * Used for the "agent-cv" brand and active process verbs.
+ * Soft shimmer text — gradient slides right-to-left across characters.
  */
 export function Shimmer({ children }: Props) {
   const [offset, setOffset] = useState(0);
 
   useEffect(() => {
-    const timer = setInterval(() => setOffset((o) => o + 1), 150);
+    const timer = setInterval(() => setOffset((o) => o + 1), 200);
     return () => clearInterval(timer);
   }, []);
 
@@ -26,9 +26,9 @@ export function Shimmer({ children }: Props) {
   return (
     <Text>
       {chars.map((char, i) => {
-        const colorIndex = (i + offset) % (RAINBOW.length - 1);
+        const colorIndex = (chars.length - 1 - i + offset) % COLORS.length;
         return (
-          <Text key={i} color={RAINBOW[colorIndex]}>
+          <Text key={i} color={COLORS[colorIndex]}>
             {char}
           </Text>
         );
