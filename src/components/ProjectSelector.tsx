@@ -241,8 +241,9 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       return;
     }
 
-    // Enter: submit
+    // Enter: submit (only if something selected)
     if (key.return) {
+      if (selected.size === 0) return;
       const result = projects.filter((p) => selected.has(p.id));
       onSubmit(result);
       return;
