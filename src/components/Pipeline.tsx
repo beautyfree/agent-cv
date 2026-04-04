@@ -89,7 +89,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         const result = await scanAndMerge(directory, {
           onProjectFound: (p, total) => {
             scanState.count = total;
-            scanState.last = p.displayName;
+            scanState.last = p.path.replace(directory, "").replace(/^\//, "") || p.displayName;
             const now = Date.now();
             if (now - scanThrottle.current > 150) {
               scanThrottle.current = now;
@@ -287,8 +287,12 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         </Box>
       )}
       <Text color="yellow">Scanning {directory}...</Text>
-      {scanCount > 0 && <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}{lastFound ? ` — ${lastFound}` : ""}</Text>}
-      {scanDir && <Text dimColor>{scanDir}</Text>}
+      {scanCount > 0 && (
+        <Text>
+          <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}</Text>
+          {lastFound ? <Text dimColor> — {lastFound}</Text> : null}
+        </Text>
+      )}
     </Box>
   );
   if (phase === "picking-emails") return <EmailPicker emailCounts={emailCounts} preSelected={gitConfigEmails} onSubmit={handleEmailPick} />;
