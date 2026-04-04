@@ -80,7 +80,7 @@ export default function Stats({}: Props) {
   return (
     <Box flexDirection="column">
       <Text dimColor>
-        Inventory: {allProjects.length} projects from {scanPaths} (scanned {scanAge})
+        Inventory: {allProjects.length} projects from {scanPaths} (scanned {scanAge}). Run `agent-cv scan` to refresh.
       </Text>
       <Text> </Text>
       <Text bold>Tech Evolution</Text>

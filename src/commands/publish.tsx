@@ -321,7 +321,7 @@ export default function Publish({ args, options }: Props) {
     <Box flexDirection="column" gap={1}>
       <Text bold>Ready to publish your profile:</Text>
       {!dir && inventory?.lastScan && (
-        <Text color="gray">  Using inventory from {new Date(inventory.lastScan).toLocaleDateString()} ({inventory.scanPaths?.join(", ")})</Text>
+        <Text color="gray">  Using inventory from {new Date(inventory.lastScan).toLocaleDateString()} ({inventory.scanPaths?.join(", ")}). Pass a directory to rescan.</Text>
       )}
       <Text color="gray">  {totalCount} projects will appear on your page</Text>
       <Text color="gray">  {publicCount} with GitHub links (public repos only)</Text>
