@@ -68,8 +68,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
 
   // Scan progress (throttled to avoid excessive re-renders)
   const [scanCount, setScanCount] = useState(0);
-  const [scanDir, setScanDir] = useState("");
   const [lastFound, setLastFound] = useState("");
+  const [prevProjectCount, setPrevProjectCount] = useState(0);
   const scanThrottle = React.useRef(0);
 
   // Email picker state
@@ -97,7 +97,10 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     async function scan() {
       try {
         await track("command_start", { command: "pipeline" });
-        const scanState = { count: 0, last: "", dir: "" };
+        const existingInv = await readInventory();
+        const prevCount = existingInv.projects.filter((p) => !p.tags.includes("removed")).length;
+        setPrevProjectCount(prevCount);
+        const scanState = { count: 0, last: "" };
         const result = await scanAndMerge(directory, {
           onProjectFound: (p, total) => {
             scanState.count = total;
@@ -107,11 +110,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
               scanThrottle.current = now;
               setScanCount(scanState.count);
               setLastFound(scanState.last);
-              if (scanState.dir) setScanDir(scanState.dir);
             }
-          },
-          onDirectoryEnter: (dir) => {
-            scanState.dir = dir.replace(directory, "").replace(/^\//, "") || ".";
           },
         });
         // Final update with latest values
@@ -307,7 +306,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       <Text color="yellow">Scanning {directory}...</Text>
       {scanCount > 0 && (
         <Text>
-          <Text color="green">Found {scanCount} project{scanCount !== 1 ? "s" : ""}</Text>
+          <Text color="green">Found {scanCount}{prevProjectCount > 0 ? `/${prevProjectCount}` : ""} project{scanCount !== 1 ? "s" : ""}</Text>
           {lastFound ? <Text dimColor> — {lastFound}</Text> : null}
         </Text>
       )}
