@@ -14,12 +14,14 @@
     "test": "bun test",
     "build:npm": "bun run scripts/build-npm.ts",
     "build:binary": "bun build src/cli.ts --compile --outfile dist/agent-cv --minify",
+    "postinstall": "lefthook install",
     "prepublishOnly": "bun run build:npm"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "ink-testing-library": "^4.0.0",
+    "lefthook": "^2.1.4",
     "react-devtools-core": "^7.0.1"
   },
   "peerDependencies": {

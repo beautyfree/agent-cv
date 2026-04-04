@@ -1,0 +1,7 @@
+pre-commit:
+  parallel: true
+  commands:
+    test:
+      run: bun test
+    build:
+      run: bun run build:npm
