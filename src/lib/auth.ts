@@ -118,7 +118,11 @@ export async function publishToApi(
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    let msg = err.error || `HTTP ${res.status}`;
+    if (err.details?.length) {
+      msg += ": " + err.details.map((d: any) => `${d.path} ${d.message}`).join(", ");
+    }
+    throw new Error(msg);
   }
 
   return res.json();

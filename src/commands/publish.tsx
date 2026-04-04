@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useApp } from "ink";
 import { readInventory } from "../lib/inventory/store.ts";
 import { countUnanalyzed } from "../lib/pipeline.ts";
 import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
@@ -25,6 +25,7 @@ interface Props {
 }
 
 export default function Publish({ args, options }: Props) {
+  const { exit } = useApp();
   const dir = args?.[0];
   const [phase, setPhase] = useState<Phase>("checking-auth");
   const [userCode, setUserCode] = useState("");
@@ -155,6 +156,14 @@ export default function Publish({ args, options }: Props) {
       } else { setError(e.message); setPhase("error"); }
     }
   }
+
+  // Exit on terminal states
+  useEffect(() => {
+    if (phase === "error" || phase === "done") {
+      const timer = setTimeout(() => exit(), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [phase, exit]);
 
   // Render
   if (phase === "error") return <Text color="red">Error: {error}</Text>;
