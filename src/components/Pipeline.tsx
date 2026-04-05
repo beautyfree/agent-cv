@@ -13,6 +13,7 @@ import {
   recountAndTag,
   analyzeProjects,
   enrichGitHubData,
+  detectProjectGroups,
   type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
@@ -122,6 +123,9 @@ export function Pipeline({ options, onComplete, onError }: Props) {
           onError(`No projects found in ${directory}`);
           return;
         }
+
+        // Detect project groups (frontend+backend in same org → one group)
+        detectProjectGroups(result.projects, directory);
 
         setInventory(result.inventory);
         setAllProjects(result.projects);

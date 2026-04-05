@@ -197,6 +197,7 @@ export function mergeInventory(
         tier: project.tier, // keep tier
         stars: project.stars, // keep GitHub data
         isPublic: project.isPublic,
+        projectGroup: updated.projectGroup, // from fresh scan (path-based)
       });
       scannedById.delete(project.id);
     } else {

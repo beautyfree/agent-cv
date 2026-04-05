@@ -36,6 +36,8 @@ export interface Project {
   stars?: number;
   significance?: number;
   tier?: "primary" | "secondary" | "minor";
+  /** Group name for related projects (e.g. "etherearn-app" for frontend/backend in same org) */
+  projectGroup?: string;
   authorEmail?: string;
 }
 

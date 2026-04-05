@@ -16,6 +16,7 @@ import {
   recountAuthorCommitsBatch,
 } from "./discovery/git-metadata.ts";
 import { detectForgottenGems } from "./discovery/forgotten-gems.ts";
+import { dirname, basename } from "node:path";
 import { PROMPT_VERSION } from "./types.ts";
 import type { Project, Inventory, AgentAdapter } from "./types.ts";
 
@@ -93,6 +94,31 @@ export async function recountAndTag(
   }
 
   return updated;
+}
+
+/**
+ * Detect project groups: projects sharing a parent directory are part of the same product.
+ * e.g. orgs/etherearn-app/frontend + orgs/etherearn-app/backend → group "etherearn-app"
+ * Only groups with 2+ projects are assigned.
+ */
+export function detectProjectGroups(projects: Project[], scanRoot: string): void {
+  const parentCounts = new Map<string, Project[]>();
+  for (const p of projects) {
+    const parent = dirname(p.path);
+    // Skip if parent IS the scan root (these are top-level, not grouped)
+    if (parent === scanRoot) continue;
+    if (!parentCounts.has(parent)) parentCounts.set(parent, []);
+    parentCounts.get(parent)!.push(p);
+  }
+
+  for (const [parent, children] of parentCounts) {
+    if (children.length >= 2) {
+      const groupName = basename(parent);
+      for (const p of children) {
+        p.projectGroup = groupName;
+      }
+    }
+  }
 }
 
 /**
