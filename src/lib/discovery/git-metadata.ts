@@ -3,6 +3,7 @@ import simpleGit from "simple-git";
 export interface GitMetadata {
   firstCommitDate: string;
   lastCommitDate: string;
+  firstCommitAuthorEmail: string;
   authorFirstCommitDate: string;
   authorLastCommitDate: string;
   totalCommits: number;
@@ -205,6 +206,7 @@ export async function extractGitMetadata(
       return {
         firstCommitDate: "",
         lastCommitDate: "",
+        firstCommitAuthorEmail: "",
         authorFirstCommitDate: "",
         authorLastCommitDate: "",
         totalCommits: 0,
@@ -214,14 +216,17 @@ export async function extractGitMetadata(
       };
     }
 
-    // All commits dates
+    // All commits dates + first commit author
     let firstCommitDate = "";
     let lastCommitDate = "";
+    let firstCommitAuthorEmail = "";
     try {
       const firstLog = await git.raw([
-        "log", "--reverse", "--format=%aI", "--max-count=1",
+        "log", "--reverse", "--format=%aI%n%ae", "--max-count=1",
       ]);
-      firstCommitDate = firstLog.trim().split("T")[0] || "";
+      const lines = firstLog.trim().split("\n");
+      firstCommitDate = (lines[0] || "").split("T")[0] || "";
+      firstCommitAuthorEmail = (lines[1] || "").trim().toLowerCase();
 
       const lastLog = await git.raw(["log", "--format=%aI", "--max-count=1"]);
       lastCommitDate = lastLog.trim().split("T")[0] || "";
@@ -267,6 +272,7 @@ export async function extractGitMetadata(
     return {
       firstCommitDate,
       lastCommitDate,
+      firstCommitAuthorEmail,
       authorFirstCommitDate,
       authorLastCommitDate,
       totalCommits,

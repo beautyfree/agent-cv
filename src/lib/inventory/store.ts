@@ -9,6 +9,7 @@ const INVENTORY_FILE = "inventory.json";
 const OLD_CONFIG_FILE = "config.json";
 
 function getBaseDir(): string {
+  if (process.env.AGENT_CV_DATA_DIR) return process.env.AGENT_CV_DATA_DIR;
   return join(process.env.HOME || "~", ".agent-cv");
 }
 

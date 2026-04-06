@@ -4,16 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-let tmpHome: string;
-const originalHome = process.env.HOME;
-
 beforeEach(async () => {
-  tmpHome = await mkdtemp(join(tmpdir(), "agent-cv-test-"));
-  process.env.HOME = tmpHome;
+  process.env.AGENT_CV_DATA_DIR = await mkdtemp(join(tmpdir(), "agent-cv-test-"));
 });
 
 afterAll(() => {
-  process.env.HOME = originalHome;
+  delete process.env.AGENT_CV_DATA_DIR;
 });
 
 describe("inventory profile (was config)", () => {

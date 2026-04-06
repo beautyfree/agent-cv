@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
-const CONFIG_DIR = join(process.env.HOME || "~", ".agent-cv");
+const CONFIG_DIR = process.env.AGENT_CV_DATA_DIR || join(process.env.HOME || "~", ".agent-cv");
 const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 
 const API_URL = process.env.AGENT_CV_API_URL || "https://agent-cv.dev";

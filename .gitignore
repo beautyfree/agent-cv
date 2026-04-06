@@ -40,3 +40,4 @@ test/fixtures/project-with-secrets
 
 # bun lockfile (generated)
 bun.lock
+.gstack/

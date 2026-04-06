@@ -303,8 +303,12 @@ async function buildProject(
 
   if (gitMeta?.authorFirstCommitDate) {
     // Best case: user has commits in this repo
-    dateRange.start = gitMeta.authorFirstCommitDate;
-    dateRange.end = gitMeta.authorLastCommitDate;
+    let start = gitMeta.authorFirstCommitDate;
+    let end = gitMeta.authorLastCommitDate || start;
+    // Guard against swapped dates (can happen with multi-email iteration)
+    if (start > end) [start, end] = [end, start];
+    dateRange.start = start;
+    dateRange.end = end;
     dateRange.approximate = false;
   } else if (gitMeta && gitMeta.totalCommits === 0) {
     // git init but no commits — use file dates
@@ -321,6 +325,11 @@ async function buildProject(
     const fileDates = await getFileDates(dir);
     dateRange.start = fileDates.start;
     dateRange.end = fileDates.end;
+  }
+
+  // Final guard: ensure start <= end for all paths
+  if (dateRange.start && dateRange.end && dateRange.start > dateRange.end) {
+    [dateRange.start, dateRange.end] = [dateRange.end, dateRange.start];
   }
 
   // Privacy audit
@@ -376,6 +385,9 @@ async function buildProject(
     included: true,
     remoteUrl: hasGit ? await extractRemoteUrl(dir) : undefined,
     authorEmail: gitMeta?.authorEmail,
+    isOwner: gitMeta?.firstCommitAuthorEmail
+      ? userEmails.has(gitMeta.firstCommitAuthorEmail)
+      : !hasGit, // no git = user created this folder
   };
 }
 

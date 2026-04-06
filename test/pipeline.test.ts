@@ -5,13 +5,11 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Isolate HOME so writeInventory doesn't overwrite real ~/.agent-cv/
-const originalHome = process.env.HOME;
 beforeEach(async () => {
-  process.env.HOME = await mkdtemp(join(tmpdir(), "agent-cv-pipeline-test-"));
+  process.env.AGENT_CV_DATA_DIR = await mkdtemp(join(tmpdir(), "agent-cv-pipeline-test-"));
 });
 afterAll(() => {
-  process.env.HOME = originalHome;
+  delete process.env.AGENT_CV_DATA_DIR;
 });
 
 function makeProject(overrides: Partial<Project> = {}): Project {

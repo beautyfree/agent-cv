@@ -39,7 +39,8 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   }
 
   // Reserved keys that do NOT type into search
-  const RESERVED = new Set([" ", "a", "q", "u", "r"]);
+  const RESERVED = new Set([" ", "a", "q", "u", "r", "f", "F"]);
+  const [forceReanalyze, setForceReanalyze] = useState<Set<string>>(new Set());
 
   // Group projects by parent directory
   const groups = useMemo(() => {
@@ -267,6 +268,33 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
       } else if (input === "r") {
         pushUndo();
         setSelected(new Set(initialSelection));
+      } else if (input === "f") {
+        // Mark current project for forced re-analysis
+        const row = rows[cursor];
+        if (row?.kind === "project") {
+          setForceReanalyze((prev) => {
+            const next = new Set(prev);
+            if (next.has(row.project.id)) next.delete(row.project.id);
+            else {
+              next.add(row.project.id);
+              row.project.analysis = undefined as any;
+            }
+            return next;
+          });
+        }
+      } else if (input === "F") {
+        // Toggle re-analyze ALL selected projects
+        const selectedProjects = projects.filter((p) => selected.has(p.id));
+        const allForced = selectedProjects.every((p) => forceReanalyze.has(p.id));
+        setForceReanalyze(() => {
+          if (allForced) return new Set();
+          const next = new Set<string>();
+          for (const p of selectedProjects) {
+            next.add(p.id);
+            p.analysis = undefined as any;
+          }
+          return next;
+        });
       }
       return;
     }
@@ -320,7 +348,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           )}
         </Text>
         <Text dimColor>
-          [Space] toggle  [Tab] expand/collapse  [Enter] submit  [a] all  [u] undo  [r] reset  Type to search
+          [Space] toggle  [Tab] expand/collapse  [Enter] submit  [a] all  [u] undo  [r] reset  [f/F] re-analyze one/all  Type to search
         </Text>
         <Text dimColor>
           <Text color="green">★</Text> = your commits  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = not yours
@@ -401,7 +429,8 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
 
         const p = row.project;
         const isSelected = selected.has(p.id);
-        const checkbox = isSelected ? "[x]" : "[ ]";
+        const isForced = forceReanalyze.has(p.id);
+        const checkbox = isForced ? "[↻]" : isSelected ? "[x]" : "[ ]";
         const dateStr = p.dateRange.start ? `${p.dateRange.approximate ? "~" : ""}${p.dateRange.start}` : "?";
         const secrets = p.privacyAudit?.secretsFound ?? 0;
         const hasMyCommits = p.authorCommitCount > 0;
@@ -422,7 +451,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
 
         return (
           <Box key={p.id}>
-            <Text color={nameColor} inverse={isCursor}>
+            <Text color={isForced ? "magenta" : nameColor} inverse={isCursor}>
               {indent}  {checkbox} {name}
             </Text>
             <Text> </Text>

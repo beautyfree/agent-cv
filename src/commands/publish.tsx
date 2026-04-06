@@ -364,7 +364,6 @@ function sanitizeForPublish(
     bio: bioOverride || insights.bio,
     socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
     name: profile.name,
-    highlights: compactHighlights(insights.highlightsByYear, 10),
     highlightsByYear: insights.highlightsByYear,
     narrative: insights.narrative,
     strongestSkills: insights.strongestSkills,

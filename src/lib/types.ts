@@ -39,6 +39,8 @@ export interface Project {
   /** Group name for related projects (e.g. "etherearn-app" for frontend/backend in same org) */
   projectGroup?: string;
   authorEmail?: string;
+  /** True if user's email matches the first commit author — they created this project */
+  isOwner?: boolean;
 }
 
 export interface ProjectAnalysis {
@@ -80,6 +82,18 @@ export interface YearlyTheme {
   year: string;
   focus: string;
   topProjects: string[];
+  exploring?: string[];
+}
+
+export interface YearlyInsight {
+  year: string;
+  focus: string;
+  highlights: string[];
+  skills: string[];
+  domains: string[];
+  achievement?: string;
+  exploring?: string[];
+  source: "llm" | "metadata";
 }
 
 export interface ProfileInsights {
@@ -91,6 +105,7 @@ export interface ProfileInsights {
   strongestSkills?: string[];
   uniqueTraits?: string[];
   yearlyThemes?: YearlyTheme[];
+  yearlyInsights?: YearlyInsight[];
   /** MD5 hash of analyzed projects. Triggers regeneration when changed. */
   _fingerprint?: string;
 }

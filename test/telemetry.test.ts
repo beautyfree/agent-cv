@@ -3,14 +3,12 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const originalHome = process.env.HOME;
-
 beforeEach(async () => {
-  process.env.HOME = await mkdtemp(join(tmpdir(), "agent-cv-tel-"));
+  process.env.AGENT_CV_DATA_DIR = await mkdtemp(join(tmpdir(), "agent-cv-tel-"));
 });
 
 afterAll(() => {
-  process.env.HOME = originalHome;
+  delete process.env.AGENT_CV_DATA_DIR;
 });
 
 describe("telemetry", () => {

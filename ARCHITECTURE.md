@@ -34,9 +34,10 @@ agent-cv generate ~/Projects
   │
   ├─ Significance scoring + tier assignment (per year)
   │
-  ├─ Profile insights (2 LLM calls):
-  │  1. Yearly themes: what the developer focused on each year
-  │  2. Final profile: bio, highlights, narrative, skills, traits
+  ├─ Profile insights (per-year + aggregation):
+  │  1. Per-year: each year analyzed independently (top 30 projects)
+  │  2. Aggregation: yearly insights → bio, narrative, skills, traits
+  │  3. Merge: derive highlights, yearlyThemes from per-year data
   │  Fingerprinted: regenerates only when analyzed projects change
   │
   └─ Render / Publish
@@ -108,20 +109,27 @@ git init, 0 commits          min file birthtime     max file mtime   true
 No git                       min file birthtime     max file mtime   true
 ```
 
-## Profile Insights (2-step generation)
+## Profile Insights (3-step generation)
 
 ```
-Step 1: Yearly Themes
-  Input:  projects grouped by year, primary/secondary only
-  Output: [{ year, focus, topProjects[] }]
-  Example: "2023: shifted from Web3 to AI tooling"
+Step 1: Per-Year Analysis (parallel, 1 LLM call per year)
+  Input:  top 30 projects per year by significance
+  Output: YearlyInsight { year, focus, highlights[], skills[], domains[] }
+  Thin years (≤2 analyzed): metadata fallback, no LLM call
+  Parallelism: batches of 3
 
-Step 2: Final Profile
-  Input:  top 50 projects by significance + yearly themes
-  Output: { bio, highlights, narrative, strongestSkills, uniqueTraits }
-  
-  Regeneration trigger: MD5 fingerprint of (project.id + analyzedAt)
-  changes when projects are added, removed, or re-analyzed
+Step 2: Profile Aggregation (1 LLM call)
+  Input:  YearlyInsight[] + global stats (languages, frameworks, domains)
+  Output: { bio, narrative, strongestSkills, uniqueTraits }
+  Does NOT receive raw projects, only yearly summaries
+
+Step 3: Merge (no LLM call)
+  Derives backward-compatible fields:
+    yearlyThemes[]   ← YearlyInsight[].{year, focus, highlights}
+    highlightsByYear ← YearlyInsight[].highlights grouped by year
+    highlights[]     ← flattened via compactHighlights(limit=10)
+
+  Regeneration trigger: MD5 fingerprint of (project.id + analyzedAt + significance)
 ```
 
 ## Adapter Architecture

@@ -55,8 +55,12 @@ export function calculateSignificance(p: Project): number {
   // Active project bonus
   if (p.hasUncommittedChanges) score += 2;
 
-  // Penalty for zero author commits (likely clone)
-  if (p.hasGit && p.authorCommitCount === 0 && !p.hasUncommittedChanges) {
+  // Owner bonus — user created this project (first commit is theirs)
+  if (p.isOwner) score += 10;
+
+  // Penalty for zero author commits in git repos (likely clone/fork)
+  // No penalty for owners or non-git projects
+  if (p.hasGit && p.authorCommitCount === 0 && !p.hasUncommittedChanges && !p.isOwner) {
     score *= 0.1;
   }
 
