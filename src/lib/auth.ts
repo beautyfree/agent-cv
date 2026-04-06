@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 const CONFIG_DIR = join(process.env.HOME || "~", ".agent-cv");
 const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 
-const API_URL = "https://agent-cv.dev";
+const API_URL = process.env.AGENT_CV_API_URL || "https://agent-cv.dev";
 const GITHUB_CLIENT_ID = "Ov23liErP4pFLMnM3e1J";
 
 export interface AuthToken {
