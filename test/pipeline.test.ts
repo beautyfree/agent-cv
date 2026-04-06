@@ -1,6 +1,18 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { analyzeProjects, type ProjectStatus } from "../src/lib/pipeline.ts";
 import type { AgentAdapter, Project, ProjectAnalysis, ProjectContext, Inventory } from "../src/lib/types.ts";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+// Isolate HOME so writeInventory doesn't overwrite real ~/.agent-cv/
+const originalHome = process.env.HOME;
+beforeEach(async () => {
+  process.env.HOME = await mkdtemp(join(tmpdir(), "agent-cv-pipeline-test-"));
+});
+afterAll(() => {
+  process.env.HOME = originalHome;
+});
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
