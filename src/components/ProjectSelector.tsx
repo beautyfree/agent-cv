@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { relative, dirname } from "node:path";
+import { relative, dirname, resolve, basename } from "node:path";
 import type { Project } from "../lib/types.ts";
 import { PROMPT_VERSION } from "../lib/types.ts";
 
@@ -12,26 +12,53 @@ interface Props {
 
 type Row =
   | { kind: "group"; path: string; count: number; selectedCount: number; depth: number }
-  | { kind: "project"; project: Project; relPath: string; depth: number };
+  | { kind: "project"; project: Project; relPath: string; depth: number }
+  | { kind: "other-header"; count: number; selectedCount: number };
 
 export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const { exit } = useApp();
   const [cursor, setCursor] = useState(0);
 
-  // If projects have been previously selected (included !== undefined from saved inventory),
-  // use their saved state. For new projects (first scan), use the heuristic.
-  const hasSavedSelection = projects.some((p) => p.included === false);
-  const initialSelection = useMemo(() => new Set(
-    hasSavedSelection
-      ? projects.filter((p) => p.included).map((p) => p.id)
-      : projects
-          .filter((p) => p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges)
-          .map((p) => p.id)
-  ), [projects, hasSavedSelection]);
+  // Split projects into scanned (from current directory) and other (from inventory)
+  const absScanRoot = useMemo(() => resolve(scanRoot), [scanRoot]);
+  const { scannedProjects, otherProjects } = useMemo(() => {
+    const scanned: Project[] = [];
+    const other: Project[] = [];
+    for (const p of projects) {
+      if (p.path && p.path.startsWith(absScanRoot)) {
+        scanned.push(p);
+      } else {
+        other.push(p);
+      }
+    }
+    return { scannedProjects: scanned, otherProjects: other };
+  }, [projects, absScanRoot]);
+
+  // Selection logic: scanned projects use saved state or heuristic.
+  // "Other" projects (outside current scan path) are NOT pre-selected —
+  // they're from a different scan and the user should opt-in explicitly.
+  const hasSavedSelection = scannedProjects.some((p) => p.included === false);
+  const initialSelection = useMemo(() => {
+    const ids = new Set<string>();
+    // Scanned projects: use saved state or author-commit heuristic
+    for (const p of scannedProjects) {
+      if (hasSavedSelection) {
+        if (p.included) ids.add(p.id);
+      } else {
+        if (p.authorCommitCount > 0 || !p.hasGit || p.commitCount === 0 || p.hasUncommittedChanges) {
+          ids.add(p.id);
+        }
+      }
+    }
+    // Other projects: NOT pre-selected. User is focusing on current scan path.
+    // They can expand "Other" and toggle individual projects if needed.
+    return ids;
+  }, [scannedProjects, otherProjects, hasSavedSelection]);
 
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelection));
   const [undoStack, setUndoStack] = useState<Set<string>[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [otherCollapsed, setOtherCollapsed] = useState(true);
   const [search, setSearch] = useState("");
 
   function pushUndo() {
@@ -42,10 +69,10 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
   const RESERVED = new Set([" ", "a", "q", "u", "r", "f", "F"]);
   const [forceReanalyze, setForceReanalyze] = useState<Set<string>>(new Set());
 
-  // Group projects by parent directory
+  // Group projects by parent directory (scanned projects only)
   const groups = useMemo(() => {
     const map = new Map<string, Array<{ project: Project; relPath: string }>>();
-    for (const project of projects) {
+    for (const project of scannedProjects) {
       const rel = relative(scanRoot, project.path);
       const parent = dirname(rel);
       const groupKey = parent === "." ? "." : parent;
@@ -126,19 +153,24 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     function isHiddenByParent(groupPath: string): boolean {
       for (const collapsedPath of collapsed) {
         if (collapsedPath === groupPath) continue;
-        const prefix = collapsedPath === "." ? "" : collapsedPath + "/";
-        if (prefix && groupPath.startsWith(prefix)) return true;
+        // Root "." is parent of everything
+        if (collapsedPath === "." && groupPath !== ".") return true;
+        const prefix = collapsedPath + "/";
+        if (groupPath.startsWith(prefix)) return true;
       }
       return false;
     }
 
     // Count items in this group + all nested subgroups
     function countNested(groupPath: string): { total: number; selected: number } {
-      const prefix = groupPath === "." ? "" : groupPath + "/";
       let total = 0;
       let sel = 0;
       for (const [gp, items] of filteredGroups) {
-        if (gp === groupPath || (prefix && gp.startsWith(prefix))) {
+        // Root "." contains everything
+        const isMatch = gp === groupPath
+          || (groupPath === "." && gp !== ".")
+          || gp.startsWith(groupPath + "/");
+        if (isMatch) {
           total += items.length;
           sel += items.filter((i) => selected.has(i.project.id)).length;
         }
@@ -155,7 +187,8 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     // Calculate depth as number of visible ancestors (not path segments)
     function getDepth(groupPath: string): number {
       if (groupPath === ".") return 0;
-      let depth = 0;
+      // All non-root groups are children of root "." — add 1 if root is visible
+      let depth = visiblePaths.has(".") ? 1 : 0;
       const parts = groupPath.split("/");
       for (let i = 1; i < parts.length; i++) {
         const ancestor = parts.slice(0, i).join("/");
@@ -177,8 +210,31 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         }
       }
     }
+
+    // "Other projects" tier — from inventory but outside current scan path
+    const filteredOther = search
+      ? otherProjects.filter((p) => {
+          const q = search.toLowerCase();
+          return p.displayName.toLowerCase().includes(q) || p.language.toLowerCase().includes(q) || p.path.toLowerCase().includes(q);
+        })
+      : otherProjects;
+
+    if (filteredOther.length > 0) {
+      const otherSel = filteredOther.filter((p) => selected.has(p.id)).length;
+      result.push({ kind: "other-header", count: filteredOther.length, selectedCount: otherSel });
+
+      if (!otherCollapsed) {
+        for (const p of filteredOther) {
+          // Use basename of parent dir as relPath for display
+          const parentDir = dirname(p.path);
+          const label = parentDir.replace(process.env.HOME || "~", "~");
+          result.push({ kind: "project", project: p, relPath: label, depth: 1 });
+        }
+      }
+    }
+
     return result;
-  }, [filteredGroups, collapsed, selected]);
+  }, [filteredGroups, collapsed, selected, otherProjects, otherCollapsed, search]);
 
   // Windowed scrolling
   const windowSize = Math.min(20, rows.length);
@@ -221,7 +277,10 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     // Tab / Right / Left: collapse/expand group
     if (key.tab || key.rightArrow || key.leftArrow) {
       const row = rows[cursor];
-      if (row?.kind === "group") {
+      if (row?.kind === "other-header") {
+        const shouldCollapse = key.leftArrow ? true : key.rightArrow ? false : undefined;
+        setOtherCollapsed(shouldCollapse ?? !otherCollapsed);
+      } else if (row?.kind === "group") {
         const shouldCollapse = key.leftArrow ? true : key.rightArrow ? false : undefined;
         setCollapsed((prev) => {
           const next = new Set(prev);
@@ -254,8 +313,16 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     if (!search && input && RESERVED.has(input)) {
       if (input === "a") {
         pushUndo();
-        if (selected.size === projects.length) setSelected(new Set());
-        else setSelected(new Set(projects.map((p) => p.id)));
+        // Toggle all scanned projects (not other)
+        const scannedIds = new Set(scannedProjects.map((p) => p.id));
+        const allScannedSelected = scannedProjects.every((p) => selected.has(p.id));
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of scannedIds) {
+            if (allScannedSelected) next.delete(id); else next.add(id);
+          }
+          return next;
+        });
       } else if (input === "q") {
         exit();
       } else if (input === "u") {
@@ -309,14 +376,25 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     const row = rows[cursor];
     if (!row) return;
     pushUndo();
+    if (row.kind === "other-header") {
+      // Toggle all other projects
+      const otherIds = otherProjects.map((p) => p.id);
+      const allSelected = otherIds.every((id) => selected.has(id));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of otherIds) { if (allSelected) next.delete(id); else next.add(id); }
+        return next;
+      });
+      return;
+    }
     if (row.kind === "group") {
       // Collect ALL projects in this group AND nested subgroups
-      const prefix = row.path === "." ? "" : row.path + "/";
       const allIds: string[] = [];
       for (const [groupPath, items] of filteredGroups) {
-        const isThisGroup = groupPath === row.path;
-        const isNested = prefix && groupPath.startsWith(prefix);
-        if (isThisGroup || isNested) {
+        const isMatch = groupPath === row.path
+          || (row.path === "." && groupPath !== ".")
+          || groupPath.startsWith(row.path + "/");
+        if (isMatch) {
           for (const item of items) allIds.push(item.project.id);
         }
       }
@@ -341,7 +419,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
     <Box flexDirection="column">
       <Box marginBottom={1} flexDirection="column">
         <Text bold>
-          Select projects for CV ({selected.size}/{projects.length})
+          Select projects for CV ({selected.size}/{scannedProjects.length}{otherProjects.length > 0 ? ` + ${otherProjects.filter(p => selected.has(p.id)).length} other` : ""})
           {search && <Text color="cyan"> — {filteredGroups.reduce((n, [, items]) => n + items.length, 0)} matches</Text>}
           {!search && projects.some((p) => p.tags.includes("new")) && (
             <Text color="blue"> — {projects.filter((p) => p.tags.includes("new")).length} new</Text>
@@ -353,6 +431,13 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         <Text dimColor>
           <Text color="green">★</Text> = your commits  <Text color="yellow">!</Text> = secrets excluded  <Text color="gray">gray</Text> = not yours
         </Text>
+        {otherProjects.length > 0 && (
+          <Text dimColor>
+            Scanned {scanRoot.replace(process.env.HOME || "~", "~")} — {scannedProjects.length} project{scannedProjects.length !== 1 ? "s" : ""}
+            {scannedProjects.filter((p) => p.tags.includes("new")).length > 0 && <Text color="blue"> ({scannedProjects.filter((p) => p.tags.includes("new")).length} new)</Text>}
+            . {otherProjects.length} other{otherProjects.length !== 1 ? "s" : ""} in inventory.
+          </Text>
+        )}
         {(() => {
           const sel = projects.filter((p) => selected.has(p.id));
           const needsAnalysis = sel.filter((p) => {
@@ -386,6 +471,23 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
         const globalIndex = start + i;
         const isCursor = globalIndex === cursor;
 
+        if (row.kind === "other-header") {
+          const arrow = otherCollapsed ? "▸" : "▾";
+          const allChecked = row.selectedCount === row.count && row.count > 0;
+          const someChecked = row.selectedCount > 0;
+          const checkbox = allChecked ? "[x]" : someChecked ? "[-]" : "[ ]";
+          return (
+            <Box key="other-header" gap={1} marginTop={1}>
+              <Text color={isCursor ? "cyan" : "yellow"} bold inverse={isCursor}>
+                {arrow} {checkbox} Other projects in inventory
+              </Text>
+              <Text color={allChecked ? "green" : someChecked ? "yellow" : "gray"}>
+                {row.selectedCount}/{row.count}
+              </Text>
+            </Box>
+          );
+        }
+
         if (row.kind === "group") {
           const isCollapsed = collapsed.has(row.path);
           const arrow = isCollapsed ? "▸" : "▾";
@@ -394,7 +496,7 @@ export function ProjectSelector({ projects, scanRoot, onSubmit }: Props) {
           const visibleGroupPaths = filteredGroups.map(([p]) => p).filter((p) => p !== row.path);
           let label: string;
           if (row.path === ".") {
-            label = "(root)";
+            label = basename(scanRoot) + "/";
           } else {
             // Find the closest ancestor that exists as a visible group
             const parts = row.path.split("/");

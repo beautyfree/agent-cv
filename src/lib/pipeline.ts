@@ -4,6 +4,7 @@
  */
 
 import { scanDirectory, type ScanOptions } from "./discovery/scanner.ts";
+import { buildCloudProjectContext } from "./analysis/cloud-context-builder.ts";
 import {
   readInventory,
   writeInventory,
@@ -16,9 +17,37 @@ import {
   recountAuthorCommitsBatch,
 } from "./discovery/git-metadata.ts";
 import { detectForgottenGems } from "./discovery/forgotten-gems.ts";
-import { dirname, basename } from "node:path";
+import { dirname, basename, resolve } from "node:path";
 import { PROMPT_VERSION } from "./types.ts";
 import type { Project, Inventory, AgentAdapter } from "./types.ts";
+import { GitHubClient } from "./discovery/github-client.ts";
+
+/**
+ * Determine which pipeline phases can be skipped on return runs.
+ * Pure function — easy to test.
+ */
+export function shouldSkipPhases(
+  inventory: Inventory,
+  projects: Project[],
+  flags: { interactive?: boolean; agent?: string }
+): { skipEmails: boolean; skipSelector: boolean; skipAgent: boolean } {
+  if (flags.interactive) {
+    return { skipEmails: false, skipSelector: false, skipAgent: false };
+  }
+
+  const skipEmails = inventory.profile.emailsConfirmed === true;
+
+  const hasSavedSelections = projects.some((p) => p.included !== undefined);
+  const hasNoNewProjects = projects.every((p) => !p.tags.includes("new"));
+  const skipSelector = hasNoNewProjects && hasSavedSelections;
+
+  const skipAgent = !!(
+    (flags.agent || inventory.lastAgent) &&
+    !flags.interactive
+  );
+
+  return { skipEmails, skipSelector, skipAgent };
+}
 
 export interface ScanCallbacks {
   onProjectFound?: (project: Project, total: number) => void;
@@ -39,8 +68,9 @@ export async function scanAndMerge(
     onDirectoryEnter: callbacks?.onDirectoryEnter,
   });
 
+  const absDirectory = resolve(directory);
   const existingInventory = await readInventory();
-  const merged = mergeInventory(existingInventory, scanResult.projects, directory);
+  const merged = mergeInventory(existingInventory, scanResult.projects, absDirectory);
   await writeInventory(merged);
 
   const projects = merged.projects.filter((p) => !p.tags.includes("removed"));
@@ -252,7 +282,12 @@ export async function analyzeProjects(
         try {
           let context;
           try {
-            context = await buildProjectContext(project);
+            if (project.source === "github") {
+              const ghClient = new GitHubClient();
+              context = await buildCloudProjectContext(project, ghClient);
+            } else {
+              context = await buildProjectContext(project);
+            }
           } catch (ctxErr: any) {
             failed.push({ project, error: `context build failed: ${ctxErr.message}` });
             onProjectStatus?.(project.id, "failed", `context: ${ctxErr.message}`.slice(0, 60));
@@ -312,43 +347,44 @@ export function countUnanalyzed(projects: Project[]): number {
 
 /**
  * Enrich projects with GitHub data (stars, isPublic).
- * Batches API calls 10 at a time. Only checks projects with github.com remoteUrl.
+ * Uses centralized GitHubClient for auth and rate limit tracking.
+ * Batches API calls 10 at a time. Only checks local projects with github.com remoteUrl
+ * that don't already have cloud-sourced data.
  */
 export async function enrichGitHubData(
   projects: Project[],
+  client?: GitHubClient,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
-  const toCheck = projects.filter((p) => p.remoteUrl?.includes("github.com"));
+  // Skip cloud-sourced projects (they already have stars/isPublic from the API listing)
+  const toCheck = projects.filter(
+    (p) => p.remoteUrl?.includes("github.com") && p.source !== "github"
+  );
   if (toCheck.length === 0) return;
 
+  const ghClient = client || new GitHubClient();
   const BATCH = 10;
   let done = 0;
-  let rateLimited = false;
 
   for (let i = 0; i < toCheck.length; i += BATCH) {
-    if (rateLimited) break;
+    if (ghClient.isRateLimited) {
+      console.error("Warning: GitHub API rate limit reached, skipping remaining repos. Set GITHUB_TOKEN for higher limits.");
+      break;
+    }
     const batch = toCheck.slice(i, i + BATCH);
     await Promise.all(batch.map(async (p) => {
-      if (rateLimited) return;
+      if (ghClient.isRateLimited) return;
       try {
         const match = p.remoteUrl!.match(/github\.com\/([^/]+\/[^/]+)/);
         if (!match) return;
-        const res = await fetch(`https://api.github.com/repos/${match[1]}`, {
-          redirect: "follow",
-          headers: { "User-Agent": "agent-cv" },
-        });
-        // Detect rate limit exhaustion
-        const remaining = res.headers.get("x-ratelimit-remaining");
-        if (remaining === "0") {
-          rateLimited = true;
-          console.error("Warning: GitHub API rate limit reached, skipping remaining repos. Set GITHUB_TOKEN for higher limits.");
-        }
-        if (res.status === 200) {
-          const data = await res.json();
-          p.stars = data.stargazers_count || 0;
-          p.isPublic = !data.private;
-        }
-      } catch { /* skip */ }
+        const data = await ghClient.get<{ stargazers_count: number; private: boolean }>(
+          `/repos/${match[1]}`
+        );
+        p.stars = data.stargazers_count || 0;
+        p.isPublic = !data.private;
+      } catch {
+        // Non-critical: skip this repo's enrichment
+      }
     }));
     done += batch.length;
     onProgress?.(done, toCheck.length);

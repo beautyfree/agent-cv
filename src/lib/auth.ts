@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 import { getDataDir } from "./data-dir.ts";
+import { readCredentials, writeCredentials } from "./credentials.ts";
 
 function getConfigDir(): string {
   return getDataDir();
@@ -50,7 +51,7 @@ export async function startDeviceFlow(): Promise<{
   const res = await fetch("https://github.com/login/device/code", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, scope: "read:user" }),
+    body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, scope: "read:user,repo" }),
   });
 
   const data = await res.json();
@@ -94,6 +95,14 @@ export async function pollForToken(deviceCode: string): Promise<AuthToken> {
   };
 
   await writeAuthToken(token);
+
+  // Save GitHub token from device flow for API scanning
+  if (data.githubToken) {
+    const creds = await readCredentials();
+    creds.githubToken = data.githubToken;
+    await writeCredentials(creds);
+  }
+
   return token;
 }
 

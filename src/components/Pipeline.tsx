@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Text, Box, useInput, useStdout } from "ink";
 import { createHash } from "node:crypto";
+import { resolve as resolvePath } from "node:path";
 import { readInventory, writeInventory } from "../lib/inventory/store.ts";
 import { resolveAdapter } from "../lib/analysis/resolve-adapter.ts";
 import { generateProfileInsights } from "../lib/analysis/bio-generator.ts";
@@ -13,11 +14,16 @@ import {
   recountAndTag,
   analyzeProjects,
   enrichGitHubData,
+  shouldSkipPhases,
   detectProjectGroups,
   type ProjectStatus,
 } from "../lib/pipeline.ts";
 import type { Project, Inventory, AgentAdapter } from "../lib/types.ts";
 import { markNoticeSeen, track } from "../lib/telemetry.ts";
+import { GitHubClient, GitHubAuthError } from "../lib/discovery/github-client.ts";
+import { detectGitHubUsername, scanGitHub } from "../lib/discovery/github-scanner.ts";
+import { mergeCloudProjects } from "../lib/inventory/store.ts";
+import { searchPackageRegistries } from "../lib/discovery/package-registries.ts";
 
 export interface PipelineOptions {
   directory: string;
@@ -26,6 +32,9 @@ export interface PipelineOptions {
   agent?: string;
   noCache?: boolean;
   dryRun?: boolean;
+  github?: string;
+  includeForks?: boolean;
+  interactive?: boolean;
 }
 
 export interface PipelineResult {
@@ -49,17 +58,18 @@ type Phase =
  * Commands provide onComplete to do their specific thing with the results.
  */
 export function Pipeline({ options, onComplete, onError }: Props) {
-  const { directory, all: selectAll, email, agent = "auto", noCache, dryRun } = options;
+  const { directory, all: selectAll, email, agent = "auto", noCache, dryRun, github: githubUsername, includeForks, interactive } = options;
 
   const { write } = useStdout();
   const prevPhase = useRef<Phase>("init");
   const [phase, _setPhase] = useState<Phase>("init");
   const setPhase = useCallback((next: Phase) => {
-    // Clear screen when switching between interactive phases to prevent ghost text
-    if (prevPhase.current !== next) {
+    // Only clear screen for interactive picker phases (not silent skips)
+    const interactivePhases = new Set<Phase>(["picking-emails", "selecting", "picking-agent"]);
+    if (prevPhase.current !== next && interactivePhases.has(next)) {
       write("\x1b[2J\x1b[H");
-      prevPhase.current = next;
     }
+    prevPhase.current = next;
     _setPhase(next);
   }, [write]);
   const [showTelemetryNotice, setShowTelemetryNotice] = useState(false);
@@ -100,7 +110,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       try {
         await track("command_start", { command: "pipeline" });
         const existingInv = await readInventory();
-        const prevCount = existingInv.projects.filter((p) => !p.tags.includes("removed")).length;
+        const absDir = resolvePath(directory);
+        const prevCount = existingInv.projects.filter((p) => !p.tags.includes("removed") && p.path.startsWith(absDir)).length;
         setPrevProjectCount(prevCount);
         const scanState = { count: 0, last: "" };
         const result = await scanAndMerge(directory, {
@@ -127,11 +138,94 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         // Detect project groups (frontend+backend in same org → one group)
         detectProjectGroups(result.projects, directory);
 
+        // GitHub cloud scanning
+        const ghUser = githubUsername || detectGitHubUsername(result.inventory);
+        if (ghUser) {
+          const ghClient = await GitHubClient.create();
+          if (!ghClient.isAuthenticated) {
+            setCurrent("Skipping GitHub scan — set GITHUB_TOKEN for cloud scanning");
+          } else {
+            try {
+              setCurrent(`Scanning GitHub repos for ${ghUser}...`);
+              const ghResult = await scanGitHub(ghUser, ghClient, {
+                includeForks,
+                onProgress: (done, total, name) => {
+                  setCurrent(`GitHub: ${done}/${total} — ${name}`);
+                },
+              });
+
+              // Merge cloud projects into inventory (dedup via remoteUrl)
+              result.inventory = mergeCloudProjects(result.inventory, ghResult.projects);
+              result.projects = result.inventory.projects.filter((p) => !p.tags.includes("removed"));
+
+              // Save GitHub profile data
+              if (ghResult.profile) {
+                result.inventory.profile.name = result.inventory.profile.name || ghResult.profile.name || undefined;
+                if (ghResult.profile.bio) {
+                  result.inventory.profile.socials = {
+                    ...result.inventory.profile.socials,
+                    github: ghUser,
+                    website: result.inventory.profile.socials?.website || ghResult.profile.blog || undefined,
+                  };
+                }
+              }
+
+              // Save starred repos and contributions to inventory for rendering
+              if (ghResult.starredRepos.length > 0 || ghResult.contributions.length > 0) {
+                (result.inventory as any).githubExtras = {
+                  starredRepos: ghResult.starredRepos.slice(0, 200),
+                  contributions: ghResult.contributions,
+                  avatarUrl: ghResult.profile?.avatar_url,
+                };
+              }
+
+              // Search package registries
+              try {
+                setCurrent("Searching package registries...");
+                const packages = await searchPackageRegistries(ghUser, (registry, error) => {
+                  setCurrent(`Warning: ${error}`);
+                });
+                if (packages.length > 0) {
+                  (result.inventory as any).publishedPackages = packages;
+                }
+              } catch {
+                // Package registries are best-effort
+              }
+
+              await writeInventory(result.inventory);
+
+              if (ghResult.errors.length > 0) {
+                for (const err of ghResult.errors) {
+                  setCurrent(`Warning: ${err.context} — ${err.error}`);
+                }
+              }
+
+              setCurrent(`GitHub: found ${ghResult.projects.length} repos, ${ghResult.starredRepos.length} starred`);
+            } catch (err: any) {
+              if (err instanceof GitHubAuthError) {
+                setCurrent(`GitHub auth failed: ${err.message}`);
+              } else {
+                setCurrent(`GitHub scan failed: ${err.message}`);
+              }
+              // Continue with local-only results
+            }
+          }
+        }
+
         setInventory(result.inventory);
         setAllProjects(result.projects);
 
         if (email) {
           setConfirmedEmails(email.split(",").map((e) => e.trim()));
+          setPhase("recounting");
+          return;
+        }
+
+        // Smart skip: use saved emails if already confirmed
+        const skips = shouldSkipPhases(result.inventory, result.projects, { interactive, agent });
+        if (skips.skipEmails && result.inventory.profile.emails.length > 0) {
+          setCurrent(`Using saved emails (${result.inventory.profile.emails.join(", ")})`);
+          setConfirmedEmails(result.inventory.profile.emails);
           setPhase("recounting");
           return;
         }
@@ -171,11 +265,49 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         setAllProjects(updated);
         if (inventory) await writeInventory(inventory);
         if (selectAll) { setSelectedProjects(updated); setPhase("picking-agent"); }
-        else setPhase("selecting");
+        else {
+          // Smart skip: use saved selections if no new projects
+          const skips = shouldSkipPhases(inventory!, updated, { interactive, agent });
+          if (skips.skipSelector) {
+            const saved = updated.filter((p) => p.included !== false);
+            setCurrent(`${saved.length} projects selected (saved)`);
+            setSelectedProjects(saved);
+            // Also try to skip agent picker
+            if (agent !== "auto") {
+              try {
+                const { adapter } = await resolveAdapter(agent);
+                setResolvedAdapter(adapter);
+                setPhase("analyzing");
+              } catch (err: any) { onError(err.message); }
+            } else {
+              await trySkipAgent() || setPhase("picking-agent");
+            }
+          } else {
+            setPhase("selecting");
+          }
+        }
       } catch (err: any) { onError(err.message); }
     }
     recount();
-  }, [phase, confirmedEmails, allProjects, inventory, selectAll]);
+  }, [phase]);
+
+  // Try to skip agent picker using saved agent
+  async function trySkipAgent(): Promise<boolean> {
+    if (interactive) return false;
+    const savedAgent = inventory?.lastAgent;
+    if (!savedAgent) return false;
+    try {
+      const { getAdapterByName } = await import("../lib/analysis/resolve-adapter.ts");
+      const adapter = getAdapterByName(savedAgent);
+      if (adapter && await adapter.isAvailable()) {
+        setCurrent(`Using ${savedAgent}`);
+        setResolvedAdapter(adapter);
+        setPhase("analyzing");
+        return true;
+      }
+    } catch { /* agent unavailable, show picker */ }
+    return false;
+  }
 
   // Project selection — save included/excluded to inventory
   const handleSelection = useCallback(async (selected: Project[]) => {
@@ -195,7 +327,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       } catch (err: any) { onError(err.message); }
       return;
     }
-    setPhase("picking-agent");
+    // Smart skip: use saved agent if still available
+    await trySkipAgent() || setPhase("picking-agent");
   }, [agent]);
 
   // Agent picker — save choice to inventory
@@ -227,7 +360,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         // Enrich with GitHub data (stars, isPublic)
         if (!dryRun) {
           setCurrent("fetching GitHub data...");
-          await enrichGitHubData(fullProjects);
+          const enrichClient = await GitHubClient.create();
+          await enrichGitHubData(fullProjects, enrichClient);
           // Sync to inventory.projects
           if (inventory) {
             const enriched = new Map(fullProjects.map((p) => [p.id, p]));
@@ -259,7 +393,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
         if (!dryRun && inventory) {
           const analyzed = fullProjects.filter((p) => p.analysis);
           const fingerprint = createHash("md5")
-            .update(analyzed.map((p) => `${p.id}:${p.analysis?.analyzedAt}`).sort().join("|"))
+            .update(analyzed.map((p) => `${p.id}:${p.analysis?.analyzedAt}:${p.significance}`).sort().join("|"))
             .digest("hex");
 
           if (fingerprint !== inventory.insights._fingerprint) {
@@ -324,7 +458,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       } catch (err: any) { onError(err.message); }
     }
     run();
-  }, [phase, selectedProjects, projectsToAnalyze, resolvedAdapter, noCache, dryRun, inventory]);
+  }, [phase, resolvedAdapter]);
 
   // Handle failure screen input
   useInput((input, key) => {
@@ -370,25 +504,6 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   if (phase === "selecting") return <ProjectSelector projects={allProjects} scanRoot={directory} onSubmit={handleSelection} />;
   if (phase === "picking-agent") return <AgentPicker onSubmit={handleAgentPick} onBack={handleAgentBack} defaultAgent={inventory?.lastAgent} />;
   if (phase === "analyzing") {
-    const statusIcon = (s: ProjectStatus) => {
-      switch (s) {
-        case "cached": return "✓";
-        case "done": return "✓";
-        case "analyzing": return "◌";
-        case "failed": return "✗";
-        case "queued": return "·";
-      }
-    };
-    const statusColor = (s: ProjectStatus) => {
-      switch (s) {
-        case "cached": return "gray";
-        case "done": return "green";
-        case "analyzing": return "yellow";
-        case "failed": return "red";
-        case "queued": return "gray";
-      }
-    };
-
     const allEntries = [...projectStatuses.entries()]
       .map(([id, { status, detail }]) => {
         const p = selectedProjects.find((p) => p.id === id);
@@ -397,31 +512,27 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     const analyzing = allEntries.filter((e) => e.status === "analyzing");
     const done = allEntries.filter((e) => e.status === "done" || e.status === "cached");
     const failed = allEntries.filter((e) => e.status === "failed");
-    const queued = allEntries.filter((e) => e.status === "queued");
+    const total = allEntries.length || progress.total || 1;
+    const completed = done.length;
+    const currentName = analyzing[0]?.name || current || "";
 
-    // Compact display: currently analyzing + last 3 done
-    const visible = [
-      ...analyzing,
-      ...done.slice(-3),
-    ];
+    // Progress bar
+    const barWidth = 20;
+    const filledWidth = Math.round((completed / total) * barWidth);
+    const bar = "█".repeat(filledWidth) + "░".repeat(barWidth - filledWidth);
+    const pct = Math.round((completed / total) * 100);
 
     return (
       <Box flexDirection="column">
-        <Text bold>Analyzing projects [{done.length}/{allEntries.length}]</Text>
-        {failed.length > 0 && <Text color="red">{failed.length} failed</Text>}
         {dryRun && <Text dimColor>(dry-run mode, no LLM calls)</Text>}
-        <Text> </Text>
-        {visible.map((entry) => (
-          <Box key={entry.id} gap={1}>
-            <Text color={statusColor(entry.status)}>{statusIcon(entry.status)}</Text>
-            <Text color={entry.status === "analyzing" ? "yellow" : undefined}>
-              {entry.name}
-            </Text>
-            {entry.detail && entry.status === "done" && <Text dimColor>{entry.detail}</Text>}
-            {entry.status === "analyzing" && <Text color="yellow">analyzing...</Text>}
-          </Box>
-        ))}
-        {queued.length > 0 && <Text dimColor>{"\n"}  {queued.length} more in queue</Text>}
+        <Text>
+          <Text color="yellow">Analyzing </Text>
+          <Text>[{completed}/{total}] </Text>
+          <Text bold>{currentName} </Text>
+          <Text color="yellow">{bar}</Text>
+          <Text> {pct}%</Text>
+        </Text>
+        {failed.length > 0 && <Text color="red">{failed.length} failed</Text>}
       </Box>
     );
   }
