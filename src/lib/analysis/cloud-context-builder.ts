@@ -59,6 +59,9 @@ export async function buildCloudProjectContext(
     gitShortlog: truncate(contributors, BUDGET.shortlog),
     recentCommits: truncate(commitsData, BUDGET.commits),
     previousAnalysis: project.analysis,
+    isOwner: project.isOwner,
+    authorCommitCount: project.authorCommitCount,
+    commitCount: project.commitCount,
   };
 }
 
@@ -71,6 +74,9 @@ function emptyContext(project: Project): ProjectContext {
     gitShortlog: "",
     recentCommits: "",
     previousAnalysis: project.analysis,
+    isOwner: project.isOwner,
+    authorCommitCount: project.authorCommitCount,
+    commitCount: project.commitCount,
   };
 }
 

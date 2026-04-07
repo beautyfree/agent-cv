@@ -3,6 +3,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import { readInventory } from "../lib/inventory/store.ts";
 import { track, flush as flushTelemetry } from "../lib/telemetry.ts";
 import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
+import { PublishResult } from "../components/PublishResult.tsx";
 import {
   readAuthToken,
   startDeviceFlow,
@@ -153,7 +154,7 @@ export default function Publish({ args, options }: Props) {
       setResultUrl(result.url);
       setPhase("done");
       // Wait briefly for server to process before opening browser
-      if (!options.noOpen) { setTimeout(() => { try { exec(`open ${result.url}`); } catch {} }, 2000); }
+      if (!options.noOpen) { setTimeout(() => { try { exec(`open "${result.url}"`); } catch {} }, 2000); }
     } catch (e: any) {
       if (e.message === "AUTH_EXPIRED") {
         await writeAuthToken({ jwt: "", username: "", obtainedAt: "" });
@@ -214,17 +215,7 @@ export default function Publish({ args, options }: Props) {
   );
   if (phase === "publishing") return <Text color="gray">Publishing to agent-cv.dev...</Text>;
 
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text> </Text>
-      <Box borderStyle="round" borderColor="green" paddingX={2} paddingY={1} flexDirection="column" alignItems="center">
-        <Text bold>Your profile is live at</Text>
-        <Text bold color="cyan">{resultUrl}</Text>
-      </Box>
-      <Text color="gray">{totalCount} projects ({analyzedCount} with AI analysis) · {publicCount} public, {totalCount - publicCount} private</Text>
-      <Text> </Text>
-    </Box>
-  );
+  return <PublishResult url={resultUrl} totalCount={totalCount} analyzedCount={analyzedCount} publicCount={publicCount} />;
 }
 
 

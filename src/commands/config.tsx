@@ -31,11 +31,9 @@ export default function ConfigCommand({}: Props) {
     isTelemetryEnabled().then(setTelemetry);
   }, []);
 
-  if (!inventory || telemetry === null) return <Text color="yellow">Loading config...</Text>;
+  const { profile, insights } = inventory || { profile: {}, insights: {} } as any;
 
-  const { profile, insights } = inventory;
-
-  const fields: Field[] = [
+  const fields: Field[] = inventory ? [
     { key: "name", label: "Name", value: profile.name || "" },
     { key: "bio", label: "Bio", value: insights.bio ? insights.bio.slice(0, 60) + "..." : "(auto-generated on next run)" },
     { key: "emailPublic", label: "Show email publicly", value: profile.emailPublic ? "yes" : "no" },
@@ -45,9 +43,10 @@ export default function ConfigCommand({}: Props) {
     { key: "socials.telegram", label: "Telegram", value: profile.socials?.telegram || "", nested: "telegram" },
     { key: "socials.website", label: "Website URL", value: profile.socials?.website || "", nested: "website" },
     { key: "telemetry", label: "Anonymous telemetry", value: telemetry ? "on" : "off" },
-  ];
+  ] : [];
 
   useInput((input, key) => {
+    if (!inventory) return;
     if (editing) {
       if (key.return) {
         const field = fields[cursor]!;
@@ -90,6 +89,8 @@ export default function ConfigCommand({}: Props) {
     }
     else if (input === "q" || key.escape) exit();
   });
+
+  if (!inventory || telemetry === null) return <Text color="yellow">Loading config...</Text>;
 
   return (
     <Box flexDirection="column">

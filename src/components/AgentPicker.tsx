@@ -5,6 +5,8 @@ import { CodexAdapter } from "../lib/analysis/codex-adapter.ts";
 import { CursorAdapter } from "../lib/analysis/cursor-adapter.ts";
 import { OpenCodeAdapter } from "../lib/analysis/opencode-adapter.ts";
 import { OllamaAdapter } from "../lib/analysis/ollama-adapter.ts";
+
+const RECOMMENDED_MODEL = "qwen2.5-coder:3b";
 import { APIAdapter } from "../lib/analysis/api-adapter.ts";
 import { writeCredentials, type SavedCredentials } from "../lib/credentials.ts";
 import type { AgentAdapter } from "../lib/types.ts";
@@ -23,7 +25,7 @@ interface Props {
   defaultAgent?: string;
 }
 
-type PickerPhase = "list" | "provider" | "key-input";
+type PickerPhase = "list" | "provider" | "key-input" | "ollama-model" | "pulling-model";
 
 const PROVIDERS = [
   { id: "openrouter" as const, label: "OpenRouter", detail: "multi-provider gateway, recommended", hint: "Get key: openrouter.ai/keys" },
@@ -41,10 +43,21 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
   const [selectedProvider, setSelectedProvider] = useState<typeof PROVIDERS[0] | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pullStatus, setPullStatus] = useState("");
+  const [pullPercent, setPullPercent] = useState(0);
+  const [ollamaModels, setOllamaModels] = useState<Array<{ name: string; size: number; isRecommended?: boolean; needsDownload?: boolean }>>([]);
+  const [modelCursor, setModelCursor] = useState(0);
 
   useEffect(() => {
     async function detect() {
       const options: AgentOption[] = [
+        {
+          name: "ollama",
+          label: "Ollama (local)",
+          adapter: new OllamaAdapter(),
+          available: false,
+          detail: "free, private, runs on your machine",
+        },
         {
           name: "claude",
           label: "Claude Code",
@@ -74,13 +87,6 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
           detail: "open-source AI coding agent",
         },
         {
-          name: "ollama",
-          label: "Ollama (local)",
-          adapter: new OllamaAdapter(),
-          available: false,
-          detail: "free, private, runs on your machine",
-        },
-        {
           name: "api",
           label: "API (OpenRouter / Anthropic / OpenAI)",
           adapter: new APIAdapter(),
@@ -92,6 +98,22 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
       await Promise.all(
         options.map(async (opt) => {
           opt.available = await opt.adapter.isAvailable();
+          if (opt.name === "ollama") {
+            const ollama = opt.adapter as OllamaAdapter;
+            if (opt.available) {
+              // Show which model will be used
+              opt.detail = `free, private — using ${ollama.getModel()}`;
+            } else {
+              // Check if Ollama is running but has no suitable model
+              try {
+                const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(2000) });
+                if (res.ok) {
+                  opt.available = true;
+                  opt.detail = `press Enter to download ${RECOMMENDED_MODEL} (1.9 GB)`;
+                }
+              } catch { /* Ollama not running */ }
+            }
+          }
         })
       );
 
@@ -122,6 +144,29 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
           setProviderCursor(0);
           return;
         }
+        if (selected.name === "ollama" && selected.available) {
+          const ollama = selected.adapter as OllamaAdapter;
+          (async () => {
+            const models = await ollama.getModels();
+            const hasRecommended = models.some(m => m.name === RECOMMENDED_MODEL);
+            // Build list: recommended download first (if not installed), then installed models
+            const list: Array<{ name: string; size: number; isRecommended?: boolean }> = [];
+            if (!hasRecommended) {
+              list.push({ name: RECOMMENDED_MODEL, size: 1.9e9, isRecommended: true, needsDownload: true });
+            }
+            for (const m of models) {
+              list.push({ ...m, isRecommended: m.name === RECOMMENDED_MODEL });
+            }
+            setOllamaModels(list);
+            // Pre-select: recommended if in list, otherwise current model
+            const currentModel = ollama.getModel();
+            const recIdx = list.findIndex(m => m.isRecommended);
+            const curIdx = list.findIndex(m => m.name === currentModel);
+            setModelCursor(recIdx >= 0 ? recIdx : curIdx >= 0 ? curIdx : 0);
+            setPhase("ollama-model");
+          })();
+          return;
+        }
         if (selected.available) {
           onSubmit(selected.adapter, selected.name);
         }
@@ -130,6 +175,39 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
         else exit();
       } else if (input === "q") {
         exit();
+      }
+    } else if (phase === "ollama-model") {
+      if (key.upArrow) {
+        setModelCursor((c) => (c > 0 ? c - 1 : ollamaModels.length - 1));
+      } else if (key.downArrow) {
+        setModelCursor((c) => (c < ollamaModels.length - 1 ? c + 1 : 0));
+      } else if (key.return) {
+        const chosen = ollamaModels[modelCursor];
+        if (!chosen) return;
+        const ollama = agents.find(a => a.name === "ollama")?.adapter as OllamaAdapter;
+        if (!ollama) return;
+
+        if (chosen.needsDownload) {
+          setPhase("pulling-model");
+          (async () => {
+            const ok = await ollama.pullModel(chosen.name, (status, percent) => {
+              setPullStatus(status);
+              setPullPercent(percent);
+            });
+            if (ok) {
+              process.env.AGENT_CV_MODEL = chosen.name;
+              await ollama.isAvailable();
+              onSubmit(ollama, "ollama");
+            } else {
+              setPhase("ollama-model");
+            }
+          })();
+        } else {
+          process.env.AGENT_CV_MODEL = chosen.name;
+          onSubmit(ollama, "ollama");
+        }
+      } else if (key.escape) {
+        setPhase("list");
       }
     } else if (phase === "provider") {
       if (key.upArrow) {
@@ -186,6 +264,49 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
 
   if (saving) {
     return <Text color="yellow">Saving API key and starting analysis...</Text>;
+  }
+
+  if (phase === "ollama-model") {
+    return (
+      <Box flexDirection="column">
+        <Box marginBottom={1} flexDirection="column">
+          <Text bold>Choose Ollama model</Text>
+          <Text dimColor>[Enter] select  [Esc] back</Text>
+        </Box>
+
+        {ollamaModels.map((m, i) => {
+          const isCur = i === modelCursor;
+          const radio = isCur ? "◉" : "○";
+          const sizeStr = m.size >= 1e9 ? `${(m.size / 1e9).toFixed(1)} GB` : `${Math.round(m.size / 1e6)} MB`;
+          return (
+            <Box key={m.name} gap={1}>
+              <Text color={isCur ? "cyan" : undefined} bold={isCur}>
+                {radio} {m.name}
+              </Text>
+              <Text dimColor>{sizeStr}</Text>
+              {m.isRecommended && <Text color="green">recommended</Text>}
+              {m.needsDownload && <Text color="yellow">download</Text>}
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  }
+
+  if (phase === "pulling-model") {
+    const barWidth = 25;
+    const filled = Math.round((pullPercent / 100) * barWidth);
+    const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+    return (
+      <Box flexDirection="column">
+        <Text bold>Downloading {RECOMMENDED_MODEL}...</Text>
+        <Text>
+          <Text color="yellow">{bar}</Text>
+          <Text> {pullPercent}%</Text>
+        </Text>
+        <Text dimColor>{pullStatus}</Text>
+      </Box>
+    );
   }
 
   // Provider selection screen
@@ -254,11 +375,11 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
         const radio = isCursor ? "◉" : "○";
 
         if (!agent.available) {
-          // API gets special treatment — selectable to configure
+          // API and Ollama get special treatment — selectable even when not configured
           if (agent.name === "api") {
             return (
               <Box key={agent.name} gap={1}>
-                <Text color={isCursor ? "cyan" : "yellow"} bold={isCursor}>
+                <Text color={isCursor ? "cyan" : undefined} bold={isCursor}>
                   {radio} {agent.label}
                 </Text>
                 <Text dimColor>— press Enter to configure</Text>
@@ -271,6 +392,18 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
                 {radio} {agent.label}
               </Text>
               <Text color="gray">— not found</Text>
+            </Box>
+          );
+        }
+
+        // Ollama highlighted in yellow as recommended free option
+        if (agent.name === "ollama") {
+          return (
+            <Box key={agent.name} gap={1}>
+              <Text color={isCursor ? "cyan" : "yellow"} bold={isCursor}>
+                {radio} {agent.label}
+              </Text>
+              <Text dimColor>{agent.detail}</Text>
             </Box>
           );
         }

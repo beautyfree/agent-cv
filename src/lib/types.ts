@@ -148,6 +148,12 @@ export interface ProjectContext {
   recentCommits: string;
   /** Previous analysis result, if this is a re-analysis */
   previousAnalysis?: ProjectAnalysis;
+  /** Whether the user is the owner/primary author */
+  isOwner?: boolean;
+  /** Number of commits by the user */
+  authorCommitCount?: number;
+  /** Total commits in the project */
+  commitCount?: number;
 }
 
 export interface OutputRenderer {

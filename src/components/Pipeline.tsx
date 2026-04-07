@@ -104,8 +104,11 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   }, [phase]);
 
   // Phase 1: Scan
+  const scanningRef = useRef(false);
   useEffect(() => {
-    if (phase !== "scanning") return;
+    if (phase !== "scanning") { scanningRef.current = false; return; }
+    if (scanningRef.current) return;
+    scanningRef.current = true;
     async function scan() {
       try {
         await track("command_start", { command: "pipeline" });
@@ -257,8 +260,11 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   }, [inventory]);
 
   // Phase 2: Recount
+  const recountingRef = useRef(false);
   useEffect(() => {
-    if (phase !== "recounting") return;
+    if (phase !== "recounting") { recountingRef.current = false; return; }
+    if (recountingRef.current) return;
+    recountingRef.current = true;
     async function recount() {
       try {
         const updated = await recountAndTag(allProjects, confirmedEmails);
@@ -416,8 +422,11 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   }
 
   // Phase 3: Analyze
+  const analyzingRef = useRef(false);
   useEffect(() => {
-    if (phase !== "analyzing" || !resolvedAdapter) return;
+    if (phase !== "analyzing") { analyzingRef.current = false; return; }
+    if (!resolvedAdapter || analyzingRef.current) return;
+    analyzingRef.current = true;
     async function run() {
       try {
         // On first run, projectsToAnalyze is empty — use selectedProjects
@@ -467,6 +476,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       // Retry only failed projects, keep successful results intact
       setProjectsToAnalyze(failedProjects.map((f) => f.project));
       setFailedProjects([]);
+      analyzingRef.current = false;
       setPhase("analyzing");
     } else if (input === "s") {
       // Skip failures, continue with whatever succeeded
@@ -476,6 +486,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
       // Switch agent and retry failed projects only
       setProjectsToAnalyze(failedProjects.map((f) => f.project));
       setFailedProjects([]);
+      analyzingRef.current = false;
       setResolvedAdapter(null);
       setPhase("picking-agent");
     }

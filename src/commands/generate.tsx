@@ -5,6 +5,7 @@ import { Pipeline, type PipelineResult } from "../components/Pipeline.tsx";
 import { readInventory } from "../lib/inventory/store.ts";
 import { readAuthToken, startDeviceFlow, pollForToken, publishToApi, PendingError, SlowDownError } from "../lib/auth.ts";
 import { sanitizeForPublish } from "../lib/publish.ts";
+import { PublishResult } from "../components/PublishResult.tsx";
 import { exec } from "node:child_process";
 
 interface Props {
@@ -126,7 +127,7 @@ export default function Generate({ args: [directory], options }: Props) {
             const pubResult = await publishToApi(auth.jwt, payload);
             setPublishUrl(pubResult.url);
             setPhase("published");
-            setTimeout(() => { try { exec(`open ${pubResult.url}`); } catch {} }, 2000);
+            setTimeout(() => { try { exec(`open "${pubResult.url}"`); } catch {} }, 2000);
           } catch (err: any) {
             if (err.message === "AUTH_EXPIRED") {
               setError("Session expired. Run `agent-cv publish` to re-authenticate.");
@@ -164,7 +165,7 @@ export default function Generate({ args: [directory], options }: Props) {
       const pubResult = await publishToApi(auth.jwt, payload);
       setPublishUrl(pubResult.url);
       setPhase("published");
-      setTimeout(() => { try { exec(`open ${pubResult.url}`); } catch {} }, 2000);
+      setTimeout(() => { try { exec(`open "${pubResult.url}"`); } catch {} }, 2000);
     } catch (err: any) {
       if (err.message === "AUTH_EXPIRED") {
         setError("Session expired. Run `agent-cv publish` to re-authenticate.");
@@ -213,11 +214,7 @@ export default function Generate({ args: [directory], options }: Props) {
       <Box flexDirection="column">
         <Text color="green" bold>CV generated! {total} projects, {analyzed} analyzed.</Text>
         {output && <Text dimColor>Written to: {output}</Text>}
-        <Text> </Text>
-        <Box borderStyle="round" borderColor="green" paddingX={2} paddingY={1} flexDirection="column" alignItems="center">
-          <Text bold>Published to</Text>
-          <Text bold color="cyan">{publishUrl}</Text>
-        </Box>
+        <PublishResult url={publishUrl} />
       </Box>
     );
   }

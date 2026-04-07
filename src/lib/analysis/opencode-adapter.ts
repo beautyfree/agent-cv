@@ -55,6 +55,11 @@ function buildPrompt(context: ProjectContext): string {
 
   const parts: string[] = [];
 
+  const isOwner = context.isOwner !== false && (context.authorCommitCount ?? 0) > 0;
+  if (!isOwner && context.commitCount) {
+    parts.push(`NOTE: The user is NOT the author (${context.authorCommitCount ?? 0}/${context.commitCount} commits). Describe what the project does, not what the user built.`, "");
+  }
+
   if (context.previousAnalysis) {
     parts.push(
       "Previous analysis:", JSON.stringify(context.previousAnalysis, null, 2), "",

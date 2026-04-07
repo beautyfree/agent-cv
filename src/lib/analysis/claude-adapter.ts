@@ -73,6 +73,12 @@ function buildPrompt(context: ProjectContext): string {
   const hasHistory = !!context.previousAnalysis;
   const parts: string[] = [];
 
+  // Ownership context — affects how contributions are framed
+  const isOwner = context.isOwner !== false && (context.authorCommitCount ?? 0) > 0;
+  if (!isOwner && context.commitCount) {
+    parts.push(`NOTE: The user is NOT the author of this project (${context.authorCommitCount ?? 0}/${context.commitCount} commits). They cloned or studied it. Describe what the project does, not what the user built. Use "This project" not "Built" or "Created".`, "");
+  }
+
   if (hasHistory) {
     parts.push(
       "This project was previously analyzed. Here is the prior result:",

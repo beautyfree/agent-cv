@@ -40,6 +40,9 @@ export async function buildProjectContext(
     gitShortlog,
     recentCommits,
     previousAnalysis: project.analysis,
+    isOwner: project.isOwner,
+    authorCommitCount: project.authorCommitCount,
+    commitCount: project.commitCount,
   };
 }
 
