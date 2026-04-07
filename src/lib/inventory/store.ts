@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Inventory, Project, InventoryProfile, ProfileInsights } from "../types.ts";
 import { INVENTORY_VERSION } from "../types.ts";
+import { normalizeGitUrl } from "../discovery/git-metadata.ts";
 import { getDataDir } from "../data-dir.ts";
 
 const INVENTORY_FILE = "inventory.json";
@@ -202,8 +203,10 @@ export function mergeInventory(
       scannedById.delete(project.id);
     } else {
       // Project was in inventory but not in scan
-      // Only remove if it was from this scan path
-      if (project.path.startsWith(scanPath)) {
+      // Cloud projects (source !== "local") are never removed by local scan path checks
+      if (project.source && project.source !== "local") {
+        merged.push(project);
+      } else if (project.path.startsWith(scanPath)) {
         // Mark as removed (don't delete, user might want to see it)
         merged.push({ ...project, tags: [...project.tags, "removed"] });
       } else {
@@ -229,5 +232,54 @@ export function mergeInventory(
     profile: existing.profile || defaultProfile(),
     insights: existing.insights || {},
     lastAgent: existing.lastAgent,
+  };
+}
+
+/**
+ * Merge cloud-scanned projects into existing inventory.
+ * Dedup via normalized remoteUrl: if a local project has the same remote,
+ * merge (prefer local data, supplement with cloud metadata).
+ * Cloud-only projects are added as new entries.
+ */
+export function mergeCloudProjects(
+  inventory: Inventory,
+  cloudProjects: Project[]
+): Inventory {
+  // Build a map of normalized remoteUrl → existing project for dedup
+  const localByRemote = new Map<string, Project>();
+  for (const p of inventory.projects) {
+    if (p.remoteUrl) {
+      const normalized = normalizeGitUrl(p.remoteUrl).toLowerCase();
+      localByRemote.set(normalized, p);
+    }
+  }
+
+  const updatedProjects = [...inventory.projects];
+
+  for (const cloud of cloudProjects) {
+    if (!cloud.remoteUrl) {
+      updatedProjects.push(cloud);
+      continue;
+    }
+
+    const normalizedUrl = normalizeGitUrl(cloud.remoteUrl).toLowerCase();
+    const existing = localByRemote.get(normalizedUrl);
+
+    if (existing) {
+      // Dedup: local project exists with same remote. Merge cloud metadata.
+      existing.stars = cloud.stars ?? existing.stars;
+      existing.isPublic = cloud.isPublic ?? existing.isPublic;
+      existing.description = existing.description || cloud.description;
+      existing.topics = existing.topics || cloud.topics;
+      // Don't overwrite local analysis, path, source, etc.
+    } else {
+      // Cloud-only project: add it
+      updatedProjects.push(cloud);
+    }
+  }
+
+  return {
+    ...inventory,
+    projects: updatedProjects,
   };
 }

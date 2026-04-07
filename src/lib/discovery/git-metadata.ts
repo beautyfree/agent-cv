@@ -306,7 +306,7 @@ export async function extractRemoteUrl(dir: string): Promise<string | null> {
  * git@github.com:user/repo.git → https://github.com/user/repo
  * https://github.com/user/repo.git → https://github.com/user/repo
  */
-function normalizeGitUrl(url: string): string {
+export function normalizeGitUrl(url: string): string {
   // SSH format: git@github.com:user/repo.git
   const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
   if (sshMatch) {

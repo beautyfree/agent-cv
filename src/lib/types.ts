@@ -41,6 +41,8 @@ export interface Project {
   authorEmail?: string;
   /** True if user's email matches the first commit author — they created this project */
   isOwner?: boolean;
+  /** Where this project was discovered: local filesystem or cloud git hosting */
+  source?: "local" | "github";
 }
 
 export interface ProjectAnalysis {
