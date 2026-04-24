@@ -3,9 +3,10 @@ import { Command } from "commander";
 import { render } from "ink";
 import React from "react";
 import { PACKAGE_VERSION } from "./version.ts";
+import { AppFrame } from "./components/AppFrame.tsx";
 
-async function renderCli(tree: React.ReactElement): Promise<void> {
-  const { waitUntilExit } = render(tree);
+async function renderInFrame(page: React.ReactElement): Promise<void> {
+  const { waitUntilExit } = render(React.createElement(AppFrame, { children: page }));
   await waitUntilExit();
 }
 
@@ -28,6 +29,7 @@ program
   .option("--github <username>", "Scan GitHub repos for this user (GITHUB_TOKEN env or credentials.githubToken)")
   .option("--include-forks", "Include forked repos when scanning GitHub", false)
   .option("-i, --interactive", "Force all interactive pickers (email, projects, agent)", false)
+  .option("--fresh", "Scan as if from scratch: do not merge into saved project list (profile kept)", false)
   .option("-y, --yes", "Auto-confirm publish offer", false)
   .action(async (directory: string | undefined, opts: any) => {
     const options = {
@@ -36,7 +38,7 @@ program
       dryRun: opts.dryRun || false,
     };
     const { default: Generate } = await import("./commands/generate/generate.tsx");
-    await renderCli(React.createElement(Generate, { args: [directory || ""], options }));
+    await renderInFrame(React.createElement(Generate, { args: [directory || ""], options }));
   });
 
 // publish
@@ -44,17 +46,17 @@ program
   .command("publish")
   .description("Scan, analyze, and publish your portfolio to agent-cv.dev")
   .argument("[directory]", "Directory to scan (uses existing inventory if omitted)")
-  .option("--bio <text>", "Custom bio/headline for your portfolio")
-  .option("--no-open", "Don't open browser after publishing")
   .option("--all", "Skip project picker, include everything", false)
   .option("--agent <name>", "Agent to use: auto, claude, codex, cursor, api", "auto")
   .option("--email <emails>", "Email(s) to filter by (comma-separated)")
   .option("--github <username>", "Scan GitHub repos for this user (GITHUB_TOKEN env or credentials.githubToken)")
   .option("--include-forks", "Include forked repos when scanning GitHub", false)
+  .option("-i, --interactive", "Force all interactive pickers (email, projects, agent)", false)
+  .option("--fresh", "Scan as if from scratch: do not merge into saved project list (profile kept)", false)
   .option("-y, --yes", "Skip confirmation prompt", false)
   .action(async (directory: string | undefined, opts: any) => {
     const { default: Publish } = await import("./commands/publish/publish.tsx");
-    await renderCli(React.createElement(Publish, { args: directory ? [directory] : [], options: opts }));
+    await renderInFrame(React.createElement(Publish, { args: directory ? [directory] : [], options: opts }));
   });
 
 // login
@@ -63,7 +65,7 @@ program
   .description("Sign in with GitHub and save credentials locally (no publish)")
   .action(async () => {
     const { default: Login } = await import("./commands/login/login.tsx");
-    await renderCli(React.createElement(Login, {}));
+    await renderInFrame(React.createElement(Login, {}));
   });
 
 // unpublish
@@ -72,7 +74,7 @@ program
   .description("Remove your portfolio from agent-cv.dev")
   .action(async () => {
     const { default: Unpublish } = await import("./commands/unpublish/unpublish.tsx");
-    await renderCli(React.createElement(Unpublish, {}));
+    await renderInFrame(React.createElement(Unpublish, {}));
   });
 
 // diff
@@ -82,7 +84,7 @@ program
   .argument("<directory>", "Directory to scan and compare against last inventory")
   .action(async (directory: string, opts: any) => {
     const { default: Diff } = await import("./commands/diff/diff.tsx");
-    await renderCli(React.createElement(Diff, { args: [directory], options: opts }));
+    await renderInFrame(React.createElement(Diff, { args: [directory], options: opts }));
   });
 
 // stats
@@ -92,7 +94,7 @@ program
   .argument("[directory]", "Directory to scan (uses existing inventory if omitted)")
   .action(async (directory: string | undefined, opts: any) => {
     const { default: Stats } = await import("./commands/stats/stats.tsx");
-    await renderCli(React.createElement(Stats, { args: directory ? [directory] : [], options: opts }));
+    await renderInFrame(React.createElement(Stats, { args: directory ? [directory] : [], options: opts }));
   });
 
 // config
@@ -101,7 +103,7 @@ program
   .description("Edit your profile: name, bio, socials, email privacy")
   .action(async (opts: any) => {
     const { default: ConfigCmd } = await import("./commands/config/config.tsx");
-    await renderCli(React.createElement(ConfigCmd, { options: opts }));
+    await renderInFrame(React.createElement(ConfigCmd, { options: opts }));
   });
 
 await program.parseAsync();

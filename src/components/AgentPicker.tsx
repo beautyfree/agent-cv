@@ -4,9 +4,11 @@ import { ClaudeAdapter } from "@agent-cv/core/src/analysis/adapters/claude-adapt
 import { CodexAdapter } from "@agent-cv/core/src/analysis/adapters/codex-adapter.ts";
 import { CursorAdapter } from "@agent-cv/core/src/analysis/adapters/cursor-adapter.ts";
 import { OpenCodeAdapter } from "@agent-cv/core/src/analysis/adapters/opencode-adapter.ts";
-import { OllamaAdapter } from "@agent-cv/core/src/analysis/adapters/ollama-adapter.ts";
-
-const RECOMMENDED_MODEL = "qwen2.5-coder:3b";
+import {
+  mergePreferredAndInstalledOllamaModels,
+  OllamaAdapter,
+  RECOMMENDED_OLLAMA_MODEL,
+} from "@agent-cv/core/src/analysis/adapters/ollama-adapter.ts";
 import { APIAdapter } from "@agent-cv/core/src/analysis/adapters/api-adapter.ts";
 import { writeCredentials, type SavedCredentials } from "@agent-cv/core/src/auth/credentials.ts";
 import type { AgentAdapter } from "@agent-cv/core/src/types.ts";
@@ -28,9 +30,24 @@ interface Props {
 type PickerPhase = "list" | "provider" | "key-input" | "ollama-model" | "pulling-model";
 
 const PROVIDERS = [
-  { id: "openrouter" as const, label: "OpenRouter", detail: "multi-provider gateway, recommended", hint: "Get key: openrouter.ai/keys" },
-  { id: "anthropic" as const, label: "Anthropic", detail: "Claude models directly", hint: "Get key: console.anthropic.com/settings/keys" },
-  { id: "openai" as const, label: "OpenAI", detail: "GPT-4o and other models", hint: "Get key: platform.openai.com/api-keys" },
+  {
+    id: "openrouter" as const,
+    label: "OpenRouter",
+    detail: "multi-provider gateway, recommended",
+    hint: "Get key: openrouter.ai/keys",
+  },
+  {
+    id: "anthropic" as const,
+    label: "Anthropic",
+    detail: "Claude models directly",
+    hint: "Get key: console.anthropic.com/settings/keys",
+  },
+  {
+    id: "openai" as const,
+    label: "OpenAI",
+    detail: "GPT-4o and other models",
+    hint: "Get key: platform.openai.com/api-keys",
+  },
 ];
 
 export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
@@ -40,12 +57,15 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<PickerPhase>("list");
   const [providerCursor, setProviderCursor] = useState(0);
-  const [selectedProvider, setSelectedProvider] = useState<typeof PROVIDERS[0] | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<(typeof PROVIDERS)[0] | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [pullStatus, setPullStatus] = useState("");
   const [pullPercent, setPullPercent] = useState(0);
-  const [ollamaModels, setOllamaModels] = useState<Array<{ name: string; size: number; isRecommended?: boolean; needsDownload?: boolean }>>([]);
+  const [pullingModelName, setPullingModelName] = useState("");
+  const [ollamaModels, setOllamaModels] = useState<
+    Array<{ name: string; size: number; isRecommended?: boolean; needsDownload?: boolean }>
+  >([]);
   const [modelCursor, setModelCursor] = useState(0);
 
   const isInitialDetectRef = useRef(true);
@@ -114,9 +134,11 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
                 const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(2000) });
                 if (res.ok) {
                   opt.available = true;
-                  opt.detail = `press Enter to download ${RECOMMENDED_MODEL} (1.9 GB)`;
+                  opt.detail = `press Enter to download ${RECOMMENDED_OLLAMA_MODEL} (1.9 GB)`;
                 }
-              } catch { /* Ollama not running */ }
+              } catch {
+                /* Ollama not running */
+              }
             }
           }
         })
@@ -173,20 +195,11 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
           const ollama = selected.adapter as OllamaAdapter;
           (async () => {
             const models = await ollama.getModels();
-            const hasRecommended = models.some(m => m.name === RECOMMENDED_MODEL);
-            // Build list: recommended download first (if not installed), then installed models
-            const list: Array<{ name: string; size: number; isRecommended?: boolean }> = [];
-            if (!hasRecommended) {
-              list.push({ name: RECOMMENDED_MODEL, size: 1.9e9, isRecommended: true, needsDownload: true });
-            }
-            for (const m of models) {
-              list.push({ ...m, isRecommended: m.name === RECOMMENDED_MODEL });
-            }
+            const list = mergePreferredAndInstalledOllamaModels(models);
             setOllamaModels(list);
-            // Pre-select: recommended if in list, otherwise current model
             const currentModel = ollama.getModel();
-            const recIdx = list.findIndex(m => m.isRecommended);
-            const curIdx = list.findIndex(m => m.name === currentModel);
+            const recIdx = list.findIndex((m) => m.isRecommended);
+            const curIdx = list.findIndex((m) => m.name === currentModel);
             setModelCursor(recIdx >= 0 ? recIdx : curIdx >= 0 ? curIdx : 0);
             setPhase("ollama-model");
           })();
@@ -211,10 +224,11 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
       } else if (key.return) {
         const chosen = ollamaModels[modelCursor];
         if (!chosen) return;
-        const ollama = agents.find(a => a.name === "ollama")?.adapter as OllamaAdapter;
+        const ollama = agents.find((a) => a.name === "ollama")?.adapter as OllamaAdapter;
         if (!ollama) return;
 
         if (chosen.needsDownload) {
+          setPullingModelName(chosen.name);
           setPhase("pulling-model");
           (async () => {
             const ok = await ollama.pullModel(chosen.name, (status, percent) => {
@@ -298,13 +312,15 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
           <Text bold>Choose Ollama model</Text>
-          <Text dimColor>[Enter] select  [Esc] back</Text>
+          <Text dimColor>[Enter] select [Esc] back</Text>
         </Box>
 
         {ollamaModels.map((m, i) => {
           const isCur = i === modelCursor;
           const radio = isCur ? "◉" : "○";
-          const sizeStr = m.size >= 1e9 ? `${(m.size / 1e9).toFixed(1)} GB` : `${Math.round(m.size / 1e6)} MB`;
+          const approx = m.needsDownload ? "~" : "";
+          const sizeStr =
+            m.size >= 1e9 ? `${approx}${(m.size / 1e9).toFixed(1)} GB` : `${approx}${Math.round(m.size / 1e6)} MB`;
           return (
             <Box key={m.name} gap={1}>
               <Text color={isCur ? "cyan" : undefined} bold={isCur}>
@@ -326,7 +342,7 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
     const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
     return (
       <Box flexDirection="column">
-        <Text bold>Downloading {RECOMMENDED_MODEL}...</Text>
+        <Text bold>Downloading {pullingModelName || RECOMMENDED_OLLAMA_MODEL}...</Text>
         <Text>
           <Text color="yellow">{bar}</Text>
           <Text> {pullPercent}%</Text>
@@ -342,7 +358,7 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
       <Box flexDirection="column">
         <Box marginBottom={1} flexDirection="column">
           <Text bold>Choose API provider</Text>
-          <Text dimColor>[Enter] select  [Esc] back</Text>
+          <Text dimColor>[Enter] select [Esc] back</Text>
         </Box>
 
         {PROVIDERS.map((provider, i) => {
@@ -363,9 +379,10 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
 
   // API key input screen
   if (phase === "key-input" && selectedProvider) {
-    const masked = keyInput.length > 8
-      ? keyInput.slice(0, 4) + "•".repeat(keyInput.length - 8) + keyInput.slice(-4)
-      : "•".repeat(keyInput.length);
+    const masked =
+      keyInput.length > 8
+        ? keyInput.slice(0, 4) + "•".repeat(keyInput.length - 8) + keyInput.slice(-4)
+        : "•".repeat(keyInput.length);
 
     return (
       <Box flexDirection="column">
@@ -381,7 +398,7 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
         </Box>
 
         <Box marginTop={1}>
-          <Text dimColor>[Enter] save  [Esc] back</Text>
+          <Text dimColor>[Enter] save [Esc] back</Text>
         </Box>
       </Box>
     );
@@ -394,9 +411,7 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
     <Box flexDirection="column">
       <Box marginBottom={1} flexDirection="column">
         <Text bold>Choose AI agent for analysis</Text>
-        <Text dimColor>
-          [Enter] select  [Esc] back  [q] quit  [r] refresh — auto every 5s
-        </Text>
+        <Text dimColor>[Enter] select [Esc] back [q] quit [r] refresh — auto every 5s</Text>
       </Box>
 
       {agents.map((agent, i) => {
@@ -450,9 +465,7 @@ export function AgentPicker({ onSubmit, onBack, defaultAgent }: Props) {
       {!anyAvailable && (
         <Box marginTop={1} flexDirection="column">
           <Text color="red">No AI agents detected.</Text>
-          <Text dimColor>
-            Select API to enter a key, or install Claude Code, Codex, Cursor, or Ollama.
-          </Text>
+          <Text dimColor>Select API to enter a key, or install Claude Code, Codex, Cursor, or Ollama.</Text>
         </Box>
       )}
     </Box>

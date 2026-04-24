@@ -43,6 +43,8 @@ export interface PipelineOptions {
   github?: string;
   includeForks?: boolean;
   interactive?: boolean;
+  /** Merge scan without reusing saved projects or analysis (see scan-merge `fresh`) */
+  fresh?: boolean;
 }
 
 export interface PipelineResult {
@@ -72,6 +74,7 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     github: githubUsername,
     includeForks,
     interactive,
+    fresh,
   } = options;
 
   const { write } = useStdout();
@@ -120,6 +123,8 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   const [scanCount, setScanCount] = useState(0);
   const [lastFound, setLastFound] = useState("");
   const [prevProjectCount, setPrevProjectCount] = useState(0);
+  const [scanElapsedSec, setScanElapsedSec] = useState(0);
+  const [scanStatus, setScanStatus] = useState("Preparing scan...");
   const scanThrottle = React.useRef(0);
 
   // Email picker state
@@ -170,8 +175,11 @@ export function Pipeline({ options, onComplete, onError }: Props) {
                 setLastFound(scanState.last);
               }
             },
+            onStatus: (message) => {
+              setScanStatus(message);
+            },
           },
-          { skipGitHubEnrich: dryRun, signal: scanAbort.signal }
+          { skipGitHubEnrich: dryRun, signal: scanAbort.signal, fresh }
         );
         // Final update with latest values
         setScanCount(scanState.count);
@@ -276,7 +284,20 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     return () => {
       scanAbort.abort();
     };
-  }, [phase, directory, email, dryRun, githubUsername, includeForks, interactive, agent]);
+  }, [phase, directory, email, dryRun, githubUsername, includeForks, interactive, agent, fresh]);
+
+  useEffect(() => {
+    if (phase !== "scanning") {
+      setScanElapsedSec(0);
+      setScanStatus("Preparing scan...");
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setScanElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   // Email picker
   const handleEmailPick = useCallback(
@@ -609,6 +630,12 @@ export function Pipeline({ options, onComplete, onError }: Props) {
           </Box>
         )}
         <Text color="yellow">Scanning {directory}...</Text>
+        <Text dimColor>
+          {scanStatus} {scanElapsedSec}s elapsed
+        </Text>
+        {scanCount === 0 && scanElapsedSec >= 10 && (
+          <Text dimColor>This can take time on large folders before first matches appear.</Text>
+        )}
         {scanCount > 0 && (
           <Text>
             <Text color="green">

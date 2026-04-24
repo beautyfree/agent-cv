@@ -17,6 +17,7 @@ Command-line flags and AI setup for **agent-cv**. For product overview, quick st
 | `--github <user>` | Enrich with GitHub repos for that user (`GITHUB_TOKEN` or saved `credentials.githubToken`). |
 | `--include-forks` | Include forked repos in the GitHub pass. |
 | `-i, --interactive` | Force pickers even when saved choices exist. |
+| `--fresh` | Scan as if the first time: do not merge into saved projects (name/emails from profile are kept). |
 | `-y, --yes` | When you are already logged in, auto-accept the publish offer after generate. |
 
 **Argument:** `[directory]` — folder to scan; if omitted, known paths from inventory are reused where applicable.
@@ -26,9 +27,11 @@ Command-line flags and AI setup for **agent-cv**. For product overview, quick st
 | Flag | Purpose |
 |------|---------|
 | `--all`, `--agent`, `--email`, `--github`, `--include-forks` | Same meanings as in `generate`. |
+| `-i, --interactive` | Force pickers (emails, projects, agent) even when data would otherwise skip them. |
+| `--fresh` | Full rescan: merge this run without old projects/analysis (profile kept). Without `[directory]`, reuses the last saved scan path (same as `generate`). |
 | `-y, --yes` | Skip confirmation prompt. |
 
-**Argument:** `[directory]` — optional; without it, publish uses the saved inventory from your last scan (see README).
+**Argument:** `[directory]` — optional. Without it, `publish` normally loads the saved inventory only; with `--fresh`, a full pipeline runs (path from `[directory]`, or last scan path, or error if none).
 
 ### `diff`
 

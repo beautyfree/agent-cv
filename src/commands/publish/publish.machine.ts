@@ -6,11 +6,12 @@ import type { Inventory, Project } from "@agent-cv/core/src/types.ts";
 import type { PipelineResult } from "../../components/Pipeline.tsx";
 
 export type PublishFlowOptions = {
-  bio?: string;
-  noOpen?: boolean;
   all?: boolean;
   agent?: string;
   email?: string;
+  interactive?: boolean;
+  /** Scan without merging into saved project list; use with a directory (or previous scan paths). */
+  fresh?: boolean;
   yes?: boolean;
 };
 
@@ -23,6 +24,7 @@ type Ctx = {
   error: string;
   jwt: string;
   directory?: string;
+  resolvedDir: string;
   options: PublishFlowOptions;
   inventory: Inventory | null;
   selectedProjects: Project[];
@@ -31,6 +33,25 @@ type Ctx = {
   analyzedCount: number;
   resultUrl: string;
 };
+
+const resolvePathActor = fromPromise(async () => {
+  let inv;
+  try {
+    inv = await readInventory();
+  } catch {
+    throw new Error(
+      "No directory specified.\nUsage: agent-cv publish <directory>\n   or: agent-cv publish --fresh <directory>"
+    );
+  }
+  const paths = inv.scanPaths?.filter(Boolean) || [];
+  if (paths.length === 0) {
+    throw new Error(
+      "No directory specified and no previous scan paths found.\nUsage: agent-cv publish <directory>\n   or: agent-cv publish --fresh <directory>"
+    );
+  }
+  const pick = paths.length === 1 ? paths[0]! : paths[paths.length - 1]!;
+  return { directory: pick };
+});
 
 const loadCacheActor = fromPromise(async () => {
   const inv = await readInventory();
@@ -44,16 +65,10 @@ const loadCacheActor = fromPromise(async () => {
   return { inventory: inv, projects };
 });
 
-const publishActor = fromPromise(
-  async ({
-    input,
-  }: {
-    input: { jwt: string; inventory: Inventory; bio?: string };
-  }) => {
-    const payload = sanitizeForPublish(input.inventory, input.bio);
-    return publishToApi(input.jwt, payload);
-  }
-);
+const publishActor = fromPromise(async ({ input }: { input: { jwt: string; inventory: Inventory } }) => {
+  const payload = sanitizeForPublish(input.inventory);
+  return publishToApi(input.jwt, payload);
+});
 
 export const publishFlowMachine = setup({
   types: {
@@ -68,11 +83,13 @@ export const publishFlowMachine = setup({
     input: {} as PublishFlowInput,
   },
   actors: {
+    resolvePath: resolvePathActor,
     loadCache: loadCacheActor,
     publishToApi: publishActor,
   },
   guards: {
     hasDirectory: ({ context }) => Boolean(context.directory?.length),
+    wantsFreshNoDir: ({ context }) => Boolean(context.options.fresh) && !context.directory?.length,
     skipConfirm: ({ context }) => Boolean(context.options.yes),
   },
 }).createMachine({
@@ -81,6 +98,7 @@ export const publishFlowMachine = setup({
     error: "",
     jwt: "",
     directory: input.directory,
+    resolvedDir: input.directory || "",
     options: input.options,
     inventory: null,
     selectedProjects: [],
@@ -102,9 +120,34 @@ export const publishFlowMachine = setup({
     },
     routeAfterAuth: {
       always: [
-        { guard: "hasDirectory", target: "runningPipeline" },
+        {
+          guard: "hasDirectory",
+          target: "runningPipeline",
+          actions: assign({ resolvedDir: ({ context }) => context.directory! }),
+        },
+        { guard: "wantsFreshNoDir", target: "resolving" },
         { target: "loadingCache" },
       ],
+    },
+    resolving: {
+      invoke: {
+        src: "resolvePath",
+        onDone: {
+          target: "runningPipeline",
+          actions: assign({
+            resolvedDir: ({ event }) => (event.output as { directory: string }).directory,
+          }),
+        },
+        onError: {
+          target: "failed",
+          actions: assign({
+            error: ({ event }) => {
+              const err = (event as unknown as { error?: unknown }).error;
+              return err instanceof Error ? err.message : String(err);
+            },
+          }),
+        },
+      },
     },
     runningPipeline: {
       on: {
@@ -150,10 +193,7 @@ export const publishFlowMachine = setup({
         publicCount: ({ context }) => context.selectedProjects.filter((p) => p.isPublic).length,
         analyzedCount: ({ context }) => context.selectedProjects.filter((p) => p.analysis).length,
       }),
-      always: [
-        { guard: "skipConfirm", target: "publishing" },
-        { target: "confirming" },
-      ],
+      always: [{ guard: "skipConfirm", target: "publishing" }, { target: "confirming" }],
     },
     confirming: {
       on: {
@@ -167,7 +207,6 @@ export const publishFlowMachine = setup({
         input: ({ context }) => ({
           jwt: context.jwt,
           inventory: context.inventory!,
-          bio: context.options.bio,
         }),
         onDone: {
           target: "done",

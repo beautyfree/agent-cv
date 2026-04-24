@@ -76,6 +76,15 @@ describe("publishFlowMachine", () => {
     } as never);
     expect(actor.getSnapshot().matches("awaitingAuth")).toBe(true);
   });
+
+  it("routes to resolving when --fresh and no directory (full rescan instead of cache)", () => {
+    const actor = createActor(publishFlowMachine, {
+      input: { directory: undefined, options: { fresh: true, yes: true } },
+    });
+    actor.start();
+    actor.send({ type: "AUTH_OK", token });
+    expect(actor.getSnapshot().matches("resolving")).toBe(true);
+  });
 });
 
 describe("generateFlowMachine", () => {

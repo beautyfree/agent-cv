@@ -23,9 +23,8 @@ export default function Generate({ args: [directory], options }: Props) {
     },
   });
 
-  const terminal =
-    state.matches("published") || state.matches("done") || state.matches("failed");
-  useInkTerminalExit(terminal, state.matches("failed"));
+  const terminal = state.matches("published") || state.matches("done") || state.matches("failed");
+  useInkTerminalExit(terminal, state.matches("failed"), state.context.error);
   useClearAuthOnSessionExpired(state.matches("failed"), state.context.error);
 
   useInput(
@@ -115,7 +114,11 @@ export default function Generate({ args: [directory], options }: Props) {
         {output && <Text dimColor>Written to: {output}</Text>}
         <Text> </Text>
         <Text>
-          Publish to agent-cv.dev? <Text color="green" bold>(y)</Text> / <Text color="red">N</Text>
+          Publish to agent-cv.dev?{" "}
+          <Text color="green" bold>
+            (y)
+          </Text>{" "}
+          / <Text color="red">N</Text>
         </Text>
       </Box>
     );

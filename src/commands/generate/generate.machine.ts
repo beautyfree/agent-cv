@@ -17,6 +17,7 @@ export type GenerateFlowOptions = {
   github?: string;
   includeForks?: boolean;
   interactive?: boolean;
+  fresh?: boolean;
   yes?: boolean;
 };
 
@@ -164,7 +165,10 @@ export const generateFlowMachine = setup({
     },
     runningPipeline: {
       on: {
-        PIPELINE_DONE: { target: "rendering", actions: assign({ result: ({ event }) => event.result, error: () => "" }) },
+        PIPELINE_DONE: {
+          target: "rendering",
+          actions: assign({ result: ({ event }) => event.result, error: () => "" }),
+        },
         PIPELINE_ERROR: { target: "failed", actions: assign({ error: ({ event }) => event.message }) },
       },
     },

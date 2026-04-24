@@ -35,6 +35,19 @@ function emptyInventory(): Inventory {
 }
 
 /**
+ * Base inventory for a --fresh scan: no projects or prior insights, but keep profile from disk
+ * (name, emails) so a rescan does not reset identity. Merge then behaves like a first run for
+ * this tree without reusing analysis or other paths' projects.
+ */
+export async function readInventoryForFreshScan(): Promise<Inventory> {
+  const disk = await readInventory();
+  return {
+    ...emptyInventory(),
+    profile: { ...disk.profile },
+  };
+}
+
+/**
  * Migrate old config.json into inventory if it exists.
  */
 async function migrateOldConfig(inventory: Inventory): Promise<boolean> {
@@ -84,8 +97,7 @@ export async function readInventory(): Promise<Inventory> {
     const parsed = JSON.parse(content) as unknown;
 
     // Ensure new fields exist (upgrade from older inventory format) before Zod
-    const raw =
-      typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    const raw = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
     if (raw) {
       if (!raw.profile) raw.profile = defaultProfile();
       if (!raw.insights) raw.insights = {};
@@ -96,9 +108,7 @@ export async function readInventory(): Promise<Inventory> {
     if (err.code === "ENOENT") {
       inventory = emptyInventory();
     } else if (err instanceof ZodError) {
-      console.error(
-        `Warning: Inventory failed validation (${err.message}). Creating fresh inventory.`
-      );
+      console.error(`Warning: Inventory failed validation (${err.message}). Creating fresh inventory.`);
       try {
         const backupPath = path + ".backup." + Date.now();
         await copyFile(path, backupPath);
@@ -108,9 +118,7 @@ export async function readInventory(): Promise<Inventory> {
       }
       inventory = emptyInventory();
     } else {
-      console.error(
-        `Warning: Inventory corrupted (${err.message}). Creating fresh inventory.`
-      );
+      console.error(`Warning: Inventory corrupted (${err.message}). Creating fresh inventory.`);
       try {
         const backupPath = path + ".backup." + Date.now();
         await copyFile(path, backupPath);
@@ -133,7 +141,9 @@ export async function readInventory(): Promise<Inventory> {
       if (gitName) {
         inventory.profile.name = gitName;
       }
-    } catch { /* git not available or no name configured */ }
+    } catch {
+      /* git not available or no name configured */
+    }
   }
 
   if (migrated || !inventory.profile.name) {
@@ -155,10 +165,7 @@ export async function writeInventory(inventory: Inventory): Promise<void> {
   await mkdir(dir, { recursive: true });
 
   // Atomic write: write to temp file, then rename
-  const tmpPath = join(
-    dir,
-    `.inventory.tmp.${randomBytes(4).toString("hex")}`
-  );
+  const tmpPath = join(dir, `.inventory.tmp.${randomBytes(4).toString("hex")}`);
 
   try {
     const json = JSON.stringify(inventory, null, 2);
@@ -186,11 +193,7 @@ export async function writeInventory(inventory: Inventory): Promise<void> {
  * - Existing projects have metadata updated (but keep analysis if path unchanged)
  * - Missing projects are marked as removed
  */
-export function mergeInventory(
-  existing: Inventory,
-  scanned: Project[],
-  scanPath: string
-): Inventory {
+export function mergeInventory(existing: Inventory, scanned: Project[], scanPath: string): Inventory {
   const scannedById = new Map(scanned.map((p) => [p.id, p]));
   const existingById = new Map(existing.projects.map((p) => [p.id, p]));
 
@@ -259,10 +262,7 @@ export function mergeInventory(
  * merge (prefer local data, supplement with cloud metadata).
  * Cloud-only projects are added as new entries.
  */
-export function mergeCloudProjects(
-  inventory: Inventory,
-  cloudProjects: Project[]
-): Inventory {
+export function mergeCloudProjects(inventory: Inventory, cloudProjects: Project[]): Inventory {
   // Build a map of normalized remoteUrl → existing project for dedup
   const localByRemote = new Map<string, Project>();
   for (const p of inventory.projects) {

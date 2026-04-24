@@ -23,7 +23,7 @@ export default function Publish({ args, options }: Props) {
   });
 
   const terminal = state.matches("done") || state.matches("failed");
-  useInkTerminalExit(terminal, state.matches("failed"));
+  useInkTerminalExit(terminal, state.matches("failed"), state.context.error);
   useClearAuthOnSessionExpired(state.matches("failed"), state.context.error);
 
   useInput(
@@ -41,14 +41,14 @@ export default function Publish({ args, options }: Props) {
     const inv = state.context.inventory;
     if (!inv) return;
     void (async () => {
-      const payload = sanitizeForPublish(inv, options.bio);
+      const payload = sanitizeForPublish(inv);
       await track("publish_complete", { projects: payload.inventory.projects.length });
       await flushTelemetry();
     })();
-  }, [state, options.bio]);
+  }, [state]);
 
   useEffect(() => {
-    if (!state.matches("done") || options.noOpen) return;
+    if (!state.matches("done")) return;
     const url = state.context.resultUrl;
     const timer = setTimeout(() => {
       try {
@@ -58,7 +58,7 @@ export default function Publish({ args, options }: Props) {
       }
     }, 3000);
     return () => clearTimeout(timer);
-  }, [state, options.noOpen]);
+  }, [state]);
 
   if (state.matches("awaitingAuth")) {
     return (
@@ -71,10 +71,21 @@ export default function Publish({ args, options }: Props) {
     );
   }
 
+  if (state.matches("resolving")) {
+    return <Text color="yellow">Resolving scan path...</Text>;
+  }
+
   if (state.matches("runningPipeline")) {
     return (
       <Pipeline
-        options={{ directory: dir!, all: options.all, email: options.email, agent: options.agent }}
+        options={{
+          directory: state.context.resolvedDir,
+          all: options.all,
+          email: options.email,
+          agent: options.agent,
+          interactive: options.interactive,
+          fresh: options.fresh,
+        }}
         onComplete={(result: PipelineResult) => send({ type: "PIPELINE_DONE", result })}
         onError={(msg) => send({ type: "PIPELINE_ERROR", message: msg })}
       />
@@ -94,7 +105,7 @@ export default function Publish({ args, options }: Props) {
     return (
       <Box flexDirection="column" gap={1}>
         <Text bold>Ready to publish your profile:</Text>
-        {!dir && inventory?.lastScan && (
+        {!dir && !options.fresh && inventory?.lastScan && (
           <Text color="gray">
             {" "}
             Using inventory from {new Date(inventory.lastScan).toLocaleDateString()}. To rescan: `agent-cv publish{" "}
@@ -107,7 +118,11 @@ export default function Publish({ args, options }: Props) {
         <Text color="gray"> Local paths, secrets, emails are stripped</Text>
         <Text> </Text>
         <Text>
-          Publish to agent-cv.dev? <Text color="green" bold>(y)</Text> / <Text color="red">n</Text>
+          Publish to agent-cv.dev?{" "}
+          <Text color="green" bold>
+            (y)
+          </Text>{" "}
+          / <Text color="red">n</Text>
         </Text>
       </Box>
     );

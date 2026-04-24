@@ -8,7 +8,7 @@ import { useInkTerminalExit } from "../../hooks/useInkTerminalExit.ts";
 export default function Login() {
   const [state, send] = useMachine(loginFlowMachine, { input: {} });
   const terminal = state.matches("done") || state.matches("failed");
-  useInkTerminalExit(terminal, state.matches("failed"));
+  useInkTerminalExit(terminal, state.matches("failed"), state.context.error);
 
   if (state.matches("awaitingAuth")) {
     return (
