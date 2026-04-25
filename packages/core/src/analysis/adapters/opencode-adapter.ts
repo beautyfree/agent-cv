@@ -47,7 +47,7 @@ export class OpenCodeAdapter implements AgentAdapter {
       return { summary: stdout.trim(), techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "opencode" };
     }
 
-    return parseStructuredAnalysisResponse(stdout, "opencode");
+    return parseStructuredAnalysisResponse(stdout, "opencode", { projectName: context.displayName });
   }
 }
 

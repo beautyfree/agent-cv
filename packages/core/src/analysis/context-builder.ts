@@ -43,6 +43,7 @@ export async function buildProjectContext(
     isOwner: project.isOwner,
     authorCommitCount: project.authorCommitCount,
     commitCount: project.commitCount,
+    displayName: project.displayName,
   };
 }
 

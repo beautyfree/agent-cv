@@ -88,7 +88,6 @@ export function Pipeline({ options, onComplete, onError }: Props) {
     input: pipelineMachineInput,
   });
   const phase = snapshot.value as Phase;
-  const showTelemetryNotice = snapshot.context.showTelemetryNotice;
   /** Tracks last committed machine phase for clear-screen on interactive steps only after a real transition. */
   const lastPhaseForClearRef = useRef<Phase | null>(null);
 
@@ -624,11 +623,6 @@ export function Pipeline({ options, onComplete, onError }: Props) {
   if (phase === "scanning")
     return (
       <Box flexDirection="column">
-        {showTelemetryNotice && (
-          <Box marginBottom={1} flexDirection="column">
-            <Text dimColor>Anonymous telemetry enabled. Disable: agent-cv config or AGENT_CV_TELEMETRY=off</Text>
-          </Box>
-        )}
         <Text color="yellow">Scanning {directory}...</Text>
         <Text dimColor>
           {scanStatus} {scanElapsedSec}s elapsed

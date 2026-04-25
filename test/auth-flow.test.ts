@@ -3,9 +3,7 @@ import superjson from "superjson";
 import {
   ensureAuth,
   getAgentCvApiUrl,
-  publishToApi,
   runDeviceFlowPoll,
-  unpublishPortfolio,
 } from "@agent-cv/core/src/auth/index.ts";
 import { resetDataDir } from "@agent-cv/core/src/data-dir.ts";
 
@@ -123,33 +121,3 @@ describe("runDeviceFlowPoll", () => {
   });
 });
 
-describe("publishToApi", () => {
-  it("returns url and username on success", async () => {
-    process.env.AGENT_CV_API_URL = "https://example.com";
-    globalThis.fetch = (url: string | URL) => {
-      expect(String(url)).toContain("publish.upsert");
-      return Promise.resolve(
-        trpcBatchJsonResponse({ url: "https://agent-cv.dev/u", username: "u" })
-      );
-    };
-    const out = await publishToApi("jwt", { inventory: [], name: "n" });
-    expect(out).toEqual({ url: "https://agent-cv.dev/u", username: "u" });
-  });
-
-});
-
-describe("unpublishPortfolio", () => {
-  it("calls tRPC publish.unpublish at AGENT_CV_API_URL /api/trpc", async () => {
-    process.env.AGENT_CV_API_URL = "https://example.com";
-    let requestUrl = "";
-    globalThis.fetch = (url: string | URL, init?: RequestInit) => {
-      requestUrl = String(url);
-      expect(init?.method).toBe("POST");
-      expect(requestUrl).toContain("https://example.com/api/trpc/");
-      expect(requestUrl).toContain("publish.unpublish");
-      return Promise.resolve(trpcBatchJsonResponse({ deleted: true, username: "u" }));
-    };
-
-    await unpublishPortfolio("my-jwt");
-  });
-});

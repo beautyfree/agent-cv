@@ -85,7 +85,7 @@ export interface ProjectAnalysis {
  * expected output schema changes. Cached analyses with a different
  * version will be re-analyzed.
  */
-export const PROMPT_VERSION = "2";
+export const PROMPT_VERSION = "3";
 
 export interface PrivacyAuditResult {
   secretsFound: number;
@@ -209,6 +209,8 @@ export interface ProjectContext {
   authorCommitCount?: number;
   /** Total commits in the project */
   commitCount?: number;
+  /** Project display name — used to strip workspace-internal deps from techStack. */
+  displayName?: string;
 }
 
 export interface OutputRenderer {

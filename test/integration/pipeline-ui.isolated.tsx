@@ -89,7 +89,7 @@ describe("Pipeline (integration, mocked core)", () => {
     );
 
     await waitForFrame(lastFrame, (s) =>
-      s.includes("Anonymous telemetry enabled") && s.includes("Scanning") && s.includes(dir)
+      s.includes("Scanning") && s.includes(dir)
     );
     unmount();
   });

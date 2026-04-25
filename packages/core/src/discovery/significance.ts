@@ -13,8 +13,12 @@ export function calculateSignificance(p: Project): number {
   const commits = p.authorCommitCount || 0;
   score += Math.min(commits * 0.5, 50); // cap at 50 points from commits
 
-  // Stars (community validation)
-  score += (p.stars || 0) * 10;
+  /** Stars only count when the author actually contributed. A popular repo
+   * you cloned but never touched should not dominate the ranking. */
+  const didContribute = commits > 0 || p.isOwner || p.hasUncommittedChanges;
+  if (didContribute) {
+    score += Math.min(p.stars || 0, 500) * 10; // cap stars contribution
+  }
 
   // Code size
   const lines = p.size?.lines || 0;
@@ -88,18 +92,39 @@ export function assignTiers(projects: Project[]): Map<string, { score: number; t
     byYear.get(year)!.push(p);
   }
 
-  // Assign tiers within each year
+  /** Studied/cloned projects (0 authored commits, not owner, no local edits)
+   *  are inspected artefacts, not contributions — they belong in "More projects"
+   *  regardless of star count. Without this, a popular OSS repo you skimmed
+   *  outranks the things you actually shipped. */
+  function isStudied(p: Project): boolean {
+    return (
+      p.hasGit &&
+      p.authorCommitCount === 0 &&
+      !p.hasUncommittedChanges &&
+      !p.isOwner
+    );
+  }
+
   for (const [, yearProjects] of byYear) {
-    const sorted = [...yearProjects].sort((a, b) => (scores.get(b.id) || 0) - (scores.get(a.id) || 0));
+    const contributed = yearProjects.filter((p) => !isStudied(p));
+    const studied = yearProjects.filter(isStudied);
+
+    const sorted = [...contributed].sort(
+      (a, b) => (scores.get(b.id) || 0) - (scores.get(a.id) || 0)
+    );
     const total = sorted.length;
     const primaryCut = Math.max(1, Math.ceil(total * 0.2));
     const secondaryCut = primaryCut + Math.max(1, Math.ceil(total * 0.3));
 
     for (let i = 0; i < sorted.length; i++) {
-      const p = sorted[i];
+      const p = sorted[i]!;
       const score = scores.get(p.id) || 0;
       const tier: ProjectTier = i < primaryCut ? "primary" : i < secondaryCut ? "secondary" : "minor";
       result.set(p.id, { score, tier });
+    }
+
+    for (const p of studied) {
+      result.set(p.id, { score: scores.get(p.id) || 0, tier: "minor" });
     }
   }
 

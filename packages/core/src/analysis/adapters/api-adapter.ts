@@ -41,11 +41,11 @@ export class APIAdapter implements AgentAdapter {
 
     // Anthropic has a different API format
     if (config.baseUrl.includes("anthropic.com")) {
-      return this.callAnthropic(config, prompt);
+      return this.callAnthropic(config, prompt, context.displayName);
     }
 
     // OpenAI-compatible (OpenRouter, OpenAI, Ollama, etc.)
-    return this.callOpenAI(config, prompt);
+    return this.callOpenAI(config, prompt, context.displayName);
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -88,7 +88,8 @@ export class APIAdapter implements AgentAdapter {
 
   private async callOpenAI(
     config: { apiKey: string; baseUrl: string; model: string },
-    prompt: string
+    prompt: string,
+    projectName?: string
   ): Promise<ProjectAnalysis> {
     const response = await this.fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
       method: "POST",
@@ -111,12 +112,13 @@ export class APIAdapter implements AgentAdapter {
 
     const json = await response.json() as any;
     const content = json.choices?.[0]?.message?.content || "";
-    return parseApiAnalysisResponse(content);
+    return parseApiAnalysisResponse(content, { projectName });
   }
 
   private async callAnthropic(
     config: { apiKey: string; baseUrl: string; model: string },
-    prompt: string
+    prompt: string,
+    projectName?: string
   ): Promise<ProjectAnalysis> {
     const response = await this.fetchWithTimeout(`${config.baseUrl}/messages`, {
       method: "POST",
@@ -139,7 +141,7 @@ export class APIAdapter implements AgentAdapter {
 
     const json = await response.json() as any;
     const content = json.content?.[0]?.text || "";
-    return parseApiAnalysisResponse(content);
+    return parseApiAnalysisResponse(content, { projectName });
   }
 }
 

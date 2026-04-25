@@ -1,8 +1,8 @@
 import { assign, fromPromise, setup } from "xstate";
 import { readInventory } from "@agent-cv/core/src/inventory/store.ts";
-import { readAuthToken, publishToApi, type AuthToken } from "@agent-cv/core/src/auth/index.ts";
+import { readAuthToken, type AuthToken } from "@agent-cv/core/src/auth/index.ts";
 import { MarkdownRenderer } from "@agent-cv/core/src/output/markdown-renderer.ts";
-import { sanitizeForPublish } from "@agent-cv/core/src/publish.ts";
+import { publishViaSync } from "@agent-cv/core/src/sync/publish.ts";
 import type { Inventory, Project } from "@agent-cv/core/src/types.ts";
 import type { AgentAdapter } from "@agent-cv/core/src/types.ts";
 import type { PipelineResult } from "../../components/Pipeline.tsx";
@@ -78,8 +78,7 @@ const renderActor = fromPromise(
 const publishActor = fromPromise(async ({ input }: { input: { inventory: Inventory } }) => {
   const auth = await readAuthToken();
   if (!auth?.jwt) throw new Error("Not authenticated");
-  const payload = sanitizeForPublish(input.inventory);
-  return publishToApi(auth.jwt, payload);
+  return publishViaSync(input.inventory);
 });
 
 export const generateFlowMachine = setup({

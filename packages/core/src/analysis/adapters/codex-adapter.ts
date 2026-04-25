@@ -45,7 +45,7 @@ export class CodexAdapter implements AgentAdapter {
       return { summary: stdout.trim(), techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "codex" };
     }
 
-    return parseStructuredAnalysisResponse(stdout, "codex");
+    return parseStructuredAnalysisResponse(stdout, "codex", { projectName: context.displayName });
   }
 }
 

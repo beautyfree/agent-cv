@@ -62,6 +62,7 @@ export async function buildCloudProjectContext(
     isOwner: project.isOwner,
     authorCommitCount: project.authorCommitCount,
     commitCount: project.commitCount,
+    displayName: project.displayName,
   };
 }
 
@@ -77,6 +78,7 @@ function emptyContext(project: Project): ProjectContext {
     isOwner: project.isOwner,
     authorCommitCount: project.authorCommitCount,
     commitCount: project.commitCount,
+    displayName: project.displayName,
   };
 }
 

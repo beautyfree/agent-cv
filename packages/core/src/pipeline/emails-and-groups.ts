@@ -62,9 +62,29 @@ export async function recountAndTag(
 }
 
 /**
+ * Generic "landing zone" directory names — projects living here are unrelated,
+ * so we skip path-based grouping for them. Remote-based grouping still applies.
+ */
+const LANDING_ZONE_DIRS = new Set([
+  "tmp",
+  "temp",
+  "scratch",
+  "playground",
+  "sandbox",
+  "downloads",
+  "dev",
+  "work",
+  "projects",
+  "code",
+  "repos",
+  "src",
+]);
+
+/**
  * Detect project groups: projects sharing a parent directory are part of the same product.
  * e.g. orgs/etherearn-app/frontend + orgs/etherearn-app/backend → group "etherearn-app"
- * Only groups with 2+ projects are assigned.
+ * Only groups with 2+ projects are assigned. Skips landing-zone folders (`tmp/`,
+ * `playground/`, etc.) where adjacency does not mean relationship.
  */
 export function detectProjectGroups(projects: Project[], scanRoot: string): void {
   const parentCounts = new Map<string, Project[]>();
@@ -77,11 +97,11 @@ export function detectProjectGroups(projects: Project[], scanRoot: string): void
   }
 
   for (const [parent, children] of parentCounts) {
-    if (children.length >= 2) {
-      const groupName = basename(parent);
-      for (const p of children) {
-        p.projectGroup = groupName;
-      }
+    if (children.length < 2) continue;
+    const groupName = basename(parent);
+    if (LANDING_ZONE_DIRS.has(groupName.toLowerCase())) continue;
+    for (const p of children) {
+      p.projectGroup = groupName;
     }
   }
 }

@@ -8,6 +8,7 @@ import {
   startDeviceFlow,
   type AuthToken,
 } from "@agent-cv/core/src/auth/index.ts";
+import { markNoticeSeen } from "@agent-cv/core/src/telemetry.ts";
 
 export type AuthGateProps = {
   /** When false, device flow failure calls `onSkipped` instead of blocking with error. */
@@ -38,6 +39,7 @@ export function AuthGate({
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
   const [error, setError] = useState("");
+  const [showTelemetryNotice, setShowTelemetryNotice] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const settledRef = useRef(false);
 
@@ -81,6 +83,9 @@ export function AuthGate({
         if (cancelled) return;
         setUserCode(flow.userCode);
         setVerificationUri(flow.verificationUri);
+        const alreadySeen = await markNoticeSeen();
+        if (cancelled) return;
+        setShowTelemetryNotice(!alreadySeen);
         setPhase("authenticating");
         try {
           exec(`open ${flow.verificationUri}`);
@@ -153,6 +158,11 @@ export function AuthGate({
     return (
       <Box flexDirection="column" gap={1}>
         <Text bold>{headline}</Text>
+        {showTelemetryNotice && (
+          <Text dimColor>
+            Anonymous telemetry enabled. Disable: agent-cv config or AGENT_CV_TELEMETRY=off
+          </Text>
+        )}
         <Text>
           Code:{" "}
           <Text bold color="yellow">
@@ -167,8 +177,8 @@ export function AuthGate({
               <Spinner type="dots" />
             </Text>{" "}
             Waiting for authorization…
-          </Text>{" "}
-          <Text dimColor>(press q to cancel)</Text>
+          </Text>
+          <Text dimColor> (press q to cancel)</Text>
         </Box>
       </Box>
     );

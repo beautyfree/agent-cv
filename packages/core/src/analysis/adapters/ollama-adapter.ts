@@ -231,7 +231,7 @@ export class OllamaAdapter implements AgentAdapter {
       };
     }
 
-    return parseOllamaAnalysisResponse(content);
+    return parseOllamaAnalysisResponse(content, { projectName: context.displayName });
   }
 }
 
@@ -260,7 +260,12 @@ function buildPrompt(context: ProjectContext): string {
     : "";
   if (!isOwner) {
     parts.push(`# NOTE: The user is NOT the author of this project. ${authorInfo} They cloned/studied it.`);
-    parts.push("Describe what the project does, NOT what the user built. Use 'This project' not 'Built' or 'Created'.");
+    parts.push(
+      "Do NOT describe the project's features as if the user built them. Do NOT copy marketing taglines from the README."
+    );
+    parts.push(
+      "Instead describe what a reader learns about the user: familiarity with this stack/domain, the kind of code they were exploring."
+    );
     parts.push("");
   } else if (authorInfo) {
     parts.push(`# AUTHOR INFO: ${authorInfo}`, "");
@@ -274,19 +279,23 @@ function buildPrompt(context: ProjectContext): string {
 
   parts.push("---");
   parts.push("Based on the project above, return a JSON object with these fields:");
-  parts.push('- "summary": 2-3 sentences describing what THIS project does (based on the README and code above)');
   parts.push(
-    '- "techStack": array of technologies actually used in THIS project (from dependencies and file structure above)'
+    '- "summary": 2-3 sentences describing the product/value of THIS project — what it does and why it matters. Do not restate the stack.'
+  );
+  parts.push(
+    '- "techStack": array of 3-8 real technologies actually used. Include: languages, frameworks, databases, notable libraries. EXCLUDE: workspace-internal packages (anything starting with "@<projectName>/"), hosting providers (Vercel, Railway, Neon, Fly, Heroku, AWS), CI services (GitHub Actions), and generic words like "Node.js" when a framework already implies it.'
   );
   if (isOwner) {
-    parts.push('- "contributions": array of 2-5 specific things the user built in THIS project (from commits above)');
+    parts.push(
+      '- "contributions": array of 3-5 CAPABILITIES the user demonstrated by building this. Phrase each as a skill or piece of engineering work (e.g. "Designed HLC-based LWW conflict resolution", "Built GitHub OAuth device flow for a CLI", "Implemented schema-aware Postgres migrations"). Do NOT copy commit messages verbatim. Do NOT use changelog language like "Fixed X", "Updated Y", "Bumped Z".'
+    );
   } else {
     parts.push(
-      '- "contributions": array of 2-3 notable features of this project (the user studied it, did NOT build it)'
+      '- "contributions": array of 2-3 short items describing what the USER can take away from having read this code (e.g. "Explored Solana program anchoring patterns", "Studied Remotion timeline internals"). Start each with a past-tense verb about the user, NOT about the project.'
     );
   }
   parts.push(
-    '- "impactScore": number 1-10 (1=tutorial, 3=hobby, 5=solid side project, 7=production app, 9=widely used infra)'
+    '- "impactScore": integer 1-10. Anchors: 1=tutorial/demo, 3=hobby experiment or small utility, 5=solid side project with real use, 7=production app that other people depend on, 9=widely used infrastructure. Be calibrated — most side projects are 3-5, not 7.'
   );
 
   if (context.previousAnalysis) {

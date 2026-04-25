@@ -59,7 +59,7 @@ export class ClaudeAdapter implements AgentAdapter {
       return { summary: text, techStack: [], contributions: [], analyzedAt: new Date().toISOString(), analyzedBy: "claude" };
     }
 
-    return parseClaudeCliAnalysisResponse(stdout);
+    return parseClaudeCliAnalysisResponse(stdout, { projectName: context.displayName });
   }
 }
 
@@ -72,29 +72,43 @@ function buildPrompt(context: ProjectContext): string {
   // Ownership context — affects how contributions are framed
   const isOwner = context.isOwner !== false && (context.authorCommitCount ?? 0) > 0;
   if (!isOwner && context.commitCount) {
-    parts.push(`NOTE: The user is NOT the author of this project (${context.authorCommitCount ?? 0}/${context.commitCount} commits). They cloned or studied it. Describe what the project does, not what the user built. Use "This project" not "Built" or "Created".`, "");
+    parts.push(
+      `NOTE: The user is NOT the author (${context.authorCommitCount ?? 0}/${context.commitCount} commits). They cloned/studied this. Do NOT copy README marketing as if the user built it. In "contributions", describe what the USER explored/learned, starting each item with a past-tense verb about the user (e.g. "Studied...", "Explored...").`,
+      ""
+    );
   }
+
+  const rules = [
+    "Rules:",
+    '- summary: 2-3 sentences about the product/value. Do not restate the stack.',
+    '- techStack: 3-8 real technologies (languages, frameworks, databases, notable libraries). EXCLUDE workspace packages (anything @<project>/* where <project> equals this project\'s name), hosting providers (Vercel, Railway, Fly, Neon, Heroku, AWS), CI services, and generic words already implied by a listed framework.',
+    isOwner
+      ? '- contributions: 3-5 CAPABILITIES the user demonstrated by building this. Phrase each as a skill or piece of engineering work (e.g. "Designed HLC-based LWW conflict resolution", "Built OAuth device flow for a CLI", "Implemented schema-aware Postgres migrations"). Do NOT copy commit messages. Do NOT use changelog verbs like "Fixed", "Updated", "Bumped".'
+      : '- contributions: 2-3 short items describing what the USER can take away from having read this code. Start each with a past-tense verb about the user.',
+    "- impactScore: integer 1-10, calibrated. 1=tutorial, 3=hobby/small utility, 5=solid side project, 7=production app others depend on, 9=widely used infra. Most side projects are 3-5.",
+    "",
+  ];
 
   if (hasHistory) {
     parts.push(
       "This project was previously analyzed. Here is the prior result:",
       JSON.stringify(context.previousAnalysis, null, 2),
       "",
-      "The project has changed since then. Update the analysis: keep what's still accurate, revise what changed, add new contributions from recent commits.",
+      "The project has changed since then. Update the analysis: keep what's still accurate, replace any contribution that reads like a commit message with a capability-level description.",
       "Respond with ONLY a JSON object (no markdown, no explanation).",
       "",
-      '{"summary": "2-3 sentence description", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"], "impactScore": 7}',
-      "impactScore: Rate 1-10 as a senior CTO would. Consider: technical complexity (architecture, scale, novel solutions), real-world value (solves a real problem, has users), engineering quality (tests, CI/CD, clean architecture), scope (full product vs toy/demo).",
+      '{"summary": "2-3 sentence product description", "techStack": ["Framework", "Language", "Database"], "contributions": ["Designed X", "Built Y"], "impactScore": 5}',
       "",
+      ...rules,
     );
   } else {
     parts.push(
       "Analyze this software project as an experienced CTO evaluating engineering talent. Respond with ONLY a JSON object (no markdown, no explanation).",
       "",
       "The JSON must have this exact structure:",
-      '{"summary": "2-3 sentence description of what this project does", "techStack": ["Tech1", "Tech2"], "contributions": ["Key feature or achievement 1", "Key feature or achievement 2"], "impactScore": 7}',
-      "impactScore: Rate 1-10 as a senior CTO would. Consider: technical complexity (architecture, scale, novel solutions), real-world value (solves a real problem, has users), engineering quality (tests, CI/CD, clean architecture), scope (full product vs toy/demo).",
+      '{"summary": "2-3 sentence product description", "techStack": ["Framework", "Language", "Database"], "contributions": ["Designed X", "Built Y"], "impactScore": 5}',
       "",
+      ...rules,
     );
   }
 

@@ -191,7 +191,7 @@ describe("analyzeProjects", () => {
         analyzedAt: new Date().toISOString(),
         analyzedBy: "test",
         analyzedAtCommit: "files:5:2024-06-01",
-        promptVersion: "2",
+        promptVersion: "3",
       },
     });
     const newProj = makeProject({ displayName: "new-proj" });

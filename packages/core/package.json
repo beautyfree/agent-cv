@@ -5,7 +5,10 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@agent-cv/sync-schema": "workspace:*",
+    "@electric-sql/pglite": "^0.2.0",
     "@trpc/client": "^11.16.0",
+    "bettersync": "^0.0.5",
     "posthog-node": "^5.28.11",
     "simple-git": "^3.33.0",
     "superjson": "^2.2.6",

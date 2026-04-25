@@ -1,7 +1,7 @@
 import { assign, fromPromise, setup } from "xstate";
 import { readInventory } from "@agent-cv/core/src/inventory/store.ts";
-import { publishToApi, type AuthToken } from "@agent-cv/core/src/auth/index.ts";
-import { sanitizeForPublish } from "@agent-cv/core/src/publish.ts";
+import { type AuthToken } from "@agent-cv/core/src/auth/index.ts";
+import { publishViaSync } from "@agent-cv/core/src/sync/publish.ts";
 import type { Inventory, Project } from "@agent-cv/core/src/types.ts";
 import type { PipelineResult } from "../../components/Pipeline.tsx";
 
@@ -66,8 +66,10 @@ const loadCacheActor = fromPromise(async () => {
 });
 
 const publishActor = fromPromise(async ({ input }: { input: { jwt: string; inventory: Inventory } }) => {
-  const payload = sanitizeForPublish(input.inventory);
-  return publishToApi(input.jwt, payload);
+  // JWT is read from disk by the sync client (readAuthToken).
+  // `input.jwt` is retained in context for legacy compat but not used here.
+  void input.jwt;
+  return publishViaSync(input.inventory);
 });
 
 export const publishFlowMachine = setup({

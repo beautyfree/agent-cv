@@ -3,7 +3,6 @@ import { Box, Text, useInput } from "ink";
 import { useMachine } from "@xstate/react";
 import { exec } from "node:child_process";
 import { track, flush as flushTelemetry } from "@agent-cv/core/src/telemetry.ts";
-import { sanitizeForPublish } from "@agent-cv/core/src/publish.ts";
 import { Pipeline, type PipelineResult } from "../../components/Pipeline.tsx";
 import { PublishResult } from "../../components/PublishResult.tsx";
 import { AuthGate } from "../../components/AuthGate.tsx";
@@ -41,8 +40,10 @@ export default function Publish({ args, options }: Props) {
     const inv = state.context.inventory;
     if (!inv) return;
     void (async () => {
-      const payload = sanitizeForPublish(inv);
-      await track("publish_complete", { projects: payload.inventory.projects.length });
+      const projectCount = inv.projects.filter(
+        (p) => p.included !== false && !p.tags.includes("removed")
+      ).length;
+      await track("publish_complete", { projects: projectCount });
       await flushTelemetry();
     })();
   }, [state]);

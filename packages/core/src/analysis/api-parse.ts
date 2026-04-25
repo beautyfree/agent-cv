@@ -59,16 +59,57 @@ export function extractJsonCandidate(raw: string): string {
 }
 
 /**
+ * Noise that bleeds into `techStack` when the model can't resist listing it.
+ * We strip these after parsing — keeping them out of the prompt isn't enough
+ * because older models regularly echo dependency names and hosting providers.
+ */
+const TECH_STACK_BLACKLIST = new Set([
+  // Hosting / infra / CI
+  "vercel", "railway", "fly", "fly.io", "neon", "heroku", "aws", "gcp", "azure",
+  "netlify", "cloudflare pages", "cloudflare", "render", "digitalocean",
+  "github actions", "github", "gitlab ci", "circleci", "travis",
+  // Generic / implied
+  "node", "node.js", "npm", "pnpm", "yarn", "git", "docker",
+]);
+
+/** Drop workspace-internal packages like `@my-project/core` whose first
+ *  path segment matches the project's display name. */
+function cleanTechStack(raw: string[], projectName?: string): string[] {
+  const owner = projectName?.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of raw) {
+    const trimmed = t.trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (TECH_STACK_BLACKLIST.has(lower)) continue;
+    // Strip `@<project>/<pkg>` workspace deps when we know the project name
+    if (owner && lower.startsWith(`@${owner}/`)) continue;
+    // De-dupe case-insensitively, keep first-seen casing
+    const key = lower;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+/**
  * Shared structured analysis shape for API, Ollama, and CLI adapters.
  * Bump `PROMPT_VERSION` in `types.ts` when the expected JSON schema or prompts change.
  */
-export function parseStructuredAnalysisResponse(raw: string, analyzedBy: string): ProjectAnalysis {
+export function parseStructuredAnalysisResponse(
+  raw: string,
+  analyzedBy: string,
+  opts: { projectName?: string } = {}
+): ProjectAnalysis {
   const jsonStr = extractJsonCandidate(raw);
   const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
   const summary = typeof parsed.summary === "string" ? parsed.summary : "";
-  const techStack = Array.isArray(parsed.techStack)
+  const techStackRaw = Array.isArray(parsed.techStack)
     ? (parsed.techStack as unknown[]).filter((t): t is string => typeof t === "string")
     : [];
+  const techStack = cleanTechStack(techStackRaw, opts.projectName);
   const contributions = Array.isArray(parsed.contributions)
     ? (parsed.contributions as unknown[]).filter((t): t is string => typeof t === "string")
     : [];
@@ -96,13 +137,19 @@ export function parseStructuredAnalysisResponse(raw: string, analyzedBy: string)
 }
 
 /** OpenAI-compatible / Anthropic HTTP chat `message.content`. */
-export function parseApiAnalysisResponse(raw: string): ProjectAnalysis {
-  return parseStructuredAnalysisResponse(raw, "api");
+export function parseApiAnalysisResponse(
+  raw: string,
+  opts: { projectName?: string } = {}
+): ProjectAnalysis {
+  return parseStructuredAnalysisResponse(raw, "api", opts);
 }
 
 /** Ollama `/v1/chat/completions` message content. */
-export function parseOllamaAnalysisResponse(raw: string): ProjectAnalysis {
-  return parseStructuredAnalysisResponse(raw, "ollama");
+export function parseOllamaAnalysisResponse(
+  raw: string,
+  opts: { projectName?: string } = {}
+): ProjectAnalysis {
+  return parseStructuredAnalysisResponse(raw, "ollama", opts);
 }
 
 /**
@@ -122,10 +169,13 @@ export function unwrapClaudeCliJsonStdout(raw: string): string {
 }
 
 /** Claude Code CLI stdout after optional JSON wrapper. */
-export function parseClaudeCliAnalysisResponse(stdout: string): ProjectAnalysis {
+export function parseClaudeCliAnalysisResponse(
+  stdout: string,
+  opts: { projectName?: string } = {}
+): ProjectAnalysis {
   const inner = unwrapClaudeCliJsonStdout(stdout);
   try {
-    return parseStructuredAnalysisResponse(inner, "claude");
+    return parseStructuredAnalysisResponse(inner, "claude", opts);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Analysis has empty")) throw err;

@@ -1,8 +1,10 @@
 import { assign, fromPromise, setup } from "xstate";
-import { unpublishPortfolio, type AuthToken } from "@agent-cv/core/src/auth/index.ts";
+import { type AuthToken } from "@agent-cv/core/src/auth/index.ts";
+import { unpublishViaSync } from "@agent-cv/core/src/sync/publish.ts";
 
 const deletePortfolio = fromPromise(async ({ input }: { input: { jwt: string } }) => {
-  await unpublishPortfolio(input.jwt);
+  void input.jwt;
+  await unpublishViaSync();
 });
 
 export const unpublishFlowMachine = setup({
