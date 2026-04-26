@@ -1,5 +1,6 @@
 import { buildCloudProjectContext } from "../analysis/cloud-context-builder.ts";
 import { buildProjectContext } from "../analysis/context-builder.ts";
+import { getCachedAnalysis, setCachedAnalysis } from "../analysis/cache.ts";
 import { writeInventory } from "../inventory/store.ts";
 import { PROMPT_VERSION } from "../types.ts";
 import type { Project, Inventory, AgentAdapter } from "../types.ts";
@@ -237,12 +238,22 @@ export async function analyzeProjects(
             return;
           }
 
-          const analysis = await retryWithBackoff(() => abortRace(adapter.analyze(context), signal), {
-            signal,
-            onRetry: (attempt, error) => {
-              onProjectStatus?.(project.id, "analyzing", `retry ${attempt + 1}/3... ${error.slice(0, 40)}`);
-            },
-          });
+          // Check the local content-hash cache first. Hits short-circuit
+          // the LLM call entirely. Cache stays on disk; nothing leaves the box.
+          let analysis = noCache ? null : await getCachedAnalysis(context, adapter.name, PROMPT_VERSION);
+          let fromCache = !!analysis;
+
+          if (!analysis) {
+            analysis = await retryWithBackoff(() => abortRace(adapter.analyze(context), signal), {
+              signal,
+              onRetry: (attempt, error) => {
+                onProjectStatus?.(project.id, "analyzing", `retry ${attempt + 1}/3... ${error.slice(0, 40)}`);
+              },
+            });
+            // Cache the fresh result for next time.
+            void setCachedAnalysis(context, adapter.name, PROMPT_VERSION, analysis);
+          }
+
           // For git projects: last commit hash. For non-git: file fingerprint.
           analysis.analyzedAtCommit =
             project.lastCommit || `files:${project.size?.files || 0}:${project.dateRange.end}`;
@@ -250,7 +261,7 @@ export async function analyzeProjects(
           project.analysis = analysis;
           analyzedOk++;
           batchSuccesses++;
-          onProjectStatus?.(project.id, "done", analysis.summary?.slice(0, 60));
+          onProjectStatus?.(project.id, "done", (fromCache ? "[cached] " : "") + (analysis.summary?.slice(0, 60) ?? ""));
         } catch (err: any) {
           if (signal?.aborted) {
             throw err;

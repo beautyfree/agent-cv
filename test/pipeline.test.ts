@@ -1,6 +1,12 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, mock, beforeAll, afterAll } from "bun:test";
 import { analyzeProjects, type ProjectStatus } from "@agent-cv/core/src/pipeline.ts";
 import type { AgentAdapter, Project, ProjectAnalysis, ProjectContext, Inventory } from "@agent-cv/core/src/types.ts";
+
+// These tests exercise the analyzer pipeline, not the LLM cache. Disable
+// the on-disk cache so retry/circuit-breaker tests aren't short-circuited
+// by results written by an earlier test in the same run.
+beforeAll(() => { process.env.AGENT_CV_NO_CACHE = "1"; });
+afterAll(() => { delete process.env.AGENT_CV_NO_CACHE; });
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
