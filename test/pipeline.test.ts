@@ -233,7 +233,7 @@ describe("analyzeProjects", () => {
       },
     };
 
-    const result = await analyzeProjects(projects, adapter, inventory);
+    const result = await analyzeProjects(projects, adapter, inventory, { concurrency: 3 });
 
     expect(result.analyzed).toBe(0);
     expect(result.failed.length).toBe(12);
@@ -269,7 +269,7 @@ describe("analyzeProjects", () => {
       },
     };
 
-    const result = await analyzeProjects(projects, adapter, inventory);
+    const result = await analyzeProjects(projects, adapter, inventory, { concurrency: 3 });
 
     // Batch 3 succeeded (3 projects), so circuit breaker reset.
     // All 12 projects should have been attempted (no early stop).

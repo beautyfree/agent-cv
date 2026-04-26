@@ -1,14 +1,16 @@
 import { readdir, stat, access, readFile } from "node:fs/promises";
 import simpleGit from "simple-git";
-import { join, basename, resolve } from "node:path";
+import { join, basename, resolve, relative } from "node:path";
 import { createHash } from "node:crypto";
+import ignore, { type Ignore } from "ignore";
 import type { Project } from "../types.ts";
 import { extractGitMetadata, extractRemoteUrl, collectUserEmails, discoverRepoLocalEmail } from "./git-metadata.ts";
 import { scanForSecrets } from "./privacy-auditor.ts";
 
 /**
  * Directories to skip during recursive scan.
- * These never contain project root markers.
+ * These never contain project root markers. Acts as baseline floor in addition
+ * to any .gitignore rules we accumulate while walking.
  */
 const IGNORE_DIRS = new Set([
   "node_modules",
@@ -19,15 +21,53 @@ const IGNORE_DIRS = new Set([
   "__pycache__",
   ".next",
   ".nuxt",
+  ".svelte-kit",
   "target",
   ".venv",
   "venv",
   ".cache",
   ".turbo",
   ".output",
+  ".vercel",
   "coverage",
   ".parcel-cache",
+  ".gradle",
+  ".idea",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".tox",
+  "bower_components",
+  ".yarn",
+  ".pnpm-store",
+  "Pods",
+  "DerivedData",
 ]);
+
+/** Concurrency cap for parallel directory walk. */
+const WALK_CONCURRENCY = (() => {
+  const env = Number(process.env.AGENT_CV_SCAN_CONCURRENCY);
+  return Number.isFinite(env) && env > 0 ? env : 16;
+})();
+
+/**
+ * Tiny semaphore — caps in-flight async operations to avoid EMFILE / fork bombs.
+ */
+function makeSemaphore(max: number) {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return async function run<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= max) await new Promise<void>((res) => queue.push(res));
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      const next = queue.shift();
+      if (next) next();
+    }
+  };
+}
 
 /**
  * Project markers and their corresponding type/language.
@@ -93,7 +133,53 @@ export async function scanDirectory(rootPath: string, options: ScanOptions = {})
   }
   signal?.throwIfAborted();
 
-  async function walk(dir: string, depth: number): Promise<void> {
+  const limit = makeSemaphore(WALK_CONCURRENCY);
+
+  /**
+   * Load .gitignore at `dir` (if present) and return a child Ignore matcher.
+   * Matchers are stacked: a directory's matcher is parent + own .gitignore.
+   * Paths fed to the matcher are relative to `dir` and never start with "/".
+   */
+  async function loadGitignore(dir: string, parent: Ignore | null): Promise<Ignore> {
+    const ig = ignore();
+    if (parent) {
+      // ignore@7 doesn't expose rules, so we compose by re-checking parent first
+      // via a wrapper. Cheap path: read every .gitignore on the chain.
+    }
+    try {
+      const content = await readFile(join(dir, ".gitignore"), "utf-8");
+      ig.add(content);
+    } catch {
+      /* no .gitignore here */
+    }
+    return ig;
+  }
+
+  /**
+   * Returns true if `name` (a basename inside `dir`) is ignored by any matcher
+   * in the chain from root to here. We pass paths relative to each matcher's
+   * own directory so .gitignore semantics stay correct.
+   */
+  function isIgnored(
+    name: string,
+    isDir: boolean,
+    chain: Array<{ matcher: Ignore; dir: string }>,
+    dir: string
+  ): boolean {
+    for (const { matcher, dir: matcherDir } of chain) {
+      const rel = relative(matcherDir, join(dir, name));
+      if (!rel || rel.startsWith("..")) continue;
+      const target = isDir ? `${rel}/` : rel;
+      if (matcher.ignores(target)) return true;
+    }
+    return false;
+  }
+
+  async function walk(
+    dir: string,
+    depth: number,
+    chain: Array<{ matcher: Ignore; dir: string }>
+  ): Promise<void> {
     if (depth > maxDepth) return;
 
     signal?.throwIfAborted();
@@ -161,18 +247,33 @@ export async function scanDirectory(rootPath: string, options: ScanOptions = {})
       }
     }
 
-    // Recurse into subdirectories
+    // Pull this dir's .gitignore (if any) and extend the chain for children
+    const ownIg = await loadGitignore(dir, null);
+    const childChain = [...chain, { matcher: ownIg, dir }];
+
+    // Walk subdirectories in parallel, capped by semaphore
+    const subdirs: string[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (IGNORE_DIRS.has(entry.name)) continue;
+      // Hidden dirs (except .git which we already handled above) are skipped
       if (entry.name.startsWith(".") && entry.name !== ".git") continue;
-
-      signal?.throwIfAborted();
-      await walk(join(dir, entry.name), depth + 1);
+      if (isIgnored(entry.name, true, childChain, dir)) continue;
+      subdirs.push(entry.name);
     }
+
+    if (subdirs.length === 0) return;
+    await Promise.all(
+      subdirs.map((name) =>
+        limit(() => {
+          signal?.throwIfAborted();
+          return walk(join(dir, name), depth + 1, childChain);
+        })
+      )
+    );
   }
 
-  await walk(absRoot, 0);
+  await walk(absRoot, 0, []);
 
   // Sort by most recent first
   projects.sort((a, b) => {
@@ -298,95 +399,55 @@ async function buildProject(
     }
   }
 
-  // License fallback: check for LICENSE file
-  if (!license) {
-    try {
-      const licContent = await readFile(join(dir, "LICENSE"), "utf-8").catch(() =>
-        readFile(join(dir, "LICENSE.md"), "utf-8").catch(() => "")
-      );
-      if (licContent.includes("MIT")) license = "MIT";
-      else if (licContent.includes("Apache")) license = "Apache-2.0";
-      else if (licContent.includes("GPL")) license = "GPL";
-      else if (licContent.includes("BSD")) license = "BSD";
-      else if (licContent.length > 0) license = "Other";
-    } catch {
-      /* ignore */
-    }
-  }
+  // From here, manifest detection is done. Everything below is independent-ish
+  // I/O — fan out in parallel.
+  const [
+    licenseFromFile,
+    fallbackLanguage,
+    gitMeta,
+    privacyAudit,
+    gitFileStats,
+    rawRemote,
+    cloneDate,
+    fileDatesPromise,
+  ] = await Promise.all([
+    license ? Promise.resolve<string | undefined>(license) : detectLicense(dir),
+    language === "Unknown" ? detectLanguageByFiles(dir) : Promise.resolve(language),
+    hasGit ? extractGitMetadata(dir, userEmails) : Promise.resolve(null),
+    scanForSecrets(dir),
+    hasGit ? collectGitFileStats(dir) : Promise.resolve({ fileCount: 0, lineCount: 0 }),
+    hasGit ? extractRemoteUrl(dir) : Promise.resolve(null),
+    hasGit ? getGitCreationDate(dir) : Promise.resolve(""),
+    getFileDates(dir),
+  ]);
 
-  // Fallback: detect language by file extensions if still Unknown
-  if (language === "Unknown") {
-    language = await detectLanguageByFiles(dir);
-  }
-
-  // Git metadata (dates, commits)
-  const gitMeta = hasGit ? await extractGitMetadata(dir, userEmails) : null;
+  if (licenseFromFile) license = licenseFromFile;
+  if (language === "Unknown") language = fallbackLanguage;
 
   // Date range: prefer author's own commits, fall back to all commits, then file dates
   let dateRange = { start: "", end: "", approximate: true };
 
   if (gitMeta?.authorFirstCommitDate) {
-    // Best case: user has commits in this repo
     let start = gitMeta.authorFirstCommitDate;
     let end = gitMeta.authorLastCommitDate || start;
-    // Guard against swapped dates (can happen with multi-email iteration)
     if (start > end) [start, end] = [end, start];
     dateRange.start = start;
     dateRange.end = end;
     dateRange.approximate = false;
   } else if (gitMeta && gitMeta.totalCommits === 0) {
-    // git init but no commits — use file dates
-    const fileDates = await getFileDates(dir);
-    dateRange.start = fileDates.start;
-    dateRange.end = fileDates.end;
+    dateRange = { ...dateRange, ...fileDatesPromise };
   } else if (gitMeta) {
-    // Cloned repo, no user commits — use .git/HEAD birthtime (clone date)
-    const cloneDate = await getGitCreationDate(dir);
     dateRange.start = cloneDate || gitMeta.firstCommitDate;
     dateRange.end = gitMeta.lastCommitDate;
   } else {
-    // No git at all — use file dates
-    const fileDates = await getFileDates(dir);
-    dateRange.start = fileDates.start;
-    dateRange.end = fileDates.end;
+    dateRange = { ...dateRange, ...fileDatesPromise };
   }
 
-  // Final guard: ensure start <= end for all paths
   if (dateRange.start && dateRange.end && dateRange.start > dateRange.end) {
     [dateRange.start, dateRange.end] = [dateRange.end, dateRange.start];
   }
 
-  // Privacy audit
-  const privacyAudit = await scanForSecrets(dir);
-
-  // Count files and lines via git or fallback
-  let fileCount = 0;
-  let lineCount = 0;
-  if (hasGit) {
-    try {
-      const git = simpleGit(dir);
-      const files = await git.raw(["ls-files"]);
-      const fileList = files.trim().split("\n").filter(Boolean);
-      fileCount = fileList.length;
-      // Count lines (fast: use git's built-in)
-      try {
-        const stats = await git.raw([
-          "diff",
-          "--stat",
-          "--diff-filter=ACMR",
-          "4b825dc642cb6eb9a060e54bf899d15f3f338fb9",
-          "HEAD",
-        ]);
-        const lastLine = stats.trim().split("\n").pop() || "";
-        const insMatch = lastLine.match(/(\d+) insertion/);
-        if (insMatch) lineCount = parseInt(insMatch[1]!, 10);
-      } catch {
-        /* no commits */
-      }
-    } catch {
-      /* fallback */
-    }
-  }
+  let { fileCount, lineCount } = gitFileStats;
   if (fileCount === 0) {
     try {
       const entries = await readdir(dir, { withFileTypes: true });
@@ -396,11 +457,7 @@ async function buildProject(
     }
   }
 
-  let remoteUrl: string | undefined;
-  if (hasGit) {
-    const rawRemote = await extractRemoteUrl(dir);
-    remoteUrl = rawRemote ?? undefined;
-  }
+  const remoteUrl = rawRemote ?? undefined;
 
   return {
     id,
@@ -427,6 +484,49 @@ async function buildProject(
     authorEmail: gitMeta?.authorEmail,
     isOwner: gitMeta?.firstCommitAuthorEmail ? userEmails.has(gitMeta.firstCommitAuthorEmail) : !hasGit, // no git = user created this folder
   };
+}
+
+/** Detect license by sniffing a LICENSE file (fast keyword scan). */
+async function detectLicense(dir: string): Promise<string | undefined> {
+  try {
+    const licContent = await readFile(join(dir, "LICENSE"), "utf-8").catch(() =>
+      readFile(join(dir, "LICENSE.md"), "utf-8").catch(() => "")
+    );
+    if (licContent.includes("MIT")) return "MIT";
+    if (licContent.includes("Apache")) return "Apache-2.0";
+    if (licContent.includes("GPL")) return "GPL";
+    if (licContent.includes("BSD")) return "BSD";
+    if (licContent.length > 0) return "Other";
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
+/** Count files + lines via two parallel git invocations. */
+async function collectGitFileStats(dir: string): Promise<{ fileCount: number; lineCount: number }> {
+  try {
+    const git = simpleGit(dir);
+    const [filesRaw, statsRaw] = await Promise.all([
+      git.raw(["ls-files"]).catch(() => ""),
+      git
+        .raw([
+          "diff",
+          "--stat",
+          "--diff-filter=ACMR",
+          "4b825dc642cb6eb9a060e54bf899d15f3f338fb9",
+          "HEAD",
+        ])
+        .catch(() => ""),
+    ]);
+    const fileCount = filesRaw.trim().split("\n").filter(Boolean).length;
+    const lastLine = statsRaw.trim().split("\n").pop() || "";
+    const insMatch = lastLine.match(/(\d+) insertion/);
+    const lineCount = insMatch ? parseInt(insMatch[1]!, 10) : 0;
+    return { fileCount, lineCount };
+  } catch {
+    return { fileCount: 0, lineCount: 0 };
+  }
 }
 
 /**

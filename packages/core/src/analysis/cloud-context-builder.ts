@@ -114,13 +114,24 @@ async function fetchTree(
   client: GitHubClient
 ): Promise<{ directoryTree: string; manifestFile: string | null }> {
   try {
-    // Get default branch SHA from the repo endpoint (already fetched in scanner, but cheap)
-    const repo = await client.get<{ default_branch: string }>(`/repos/${repoPath}`);
-    const branch = repo.default_branch || "main";
-
-    const data = await client.get<{ tree: TreeEntry[]; truncated: boolean }>(
-      `/repos/${repoPath}/git/trees/${branch}?recursive=1`
-    );
+    // Skip the extra /repos/X round-trip — HEAD resolves to the default
+    // branch tip server-side. Saves one API call per cloud project.
+    let data: { tree: TreeEntry[]; truncated: boolean };
+    try {
+      data = await client.get<{ tree: TreeEntry[]; truncated: boolean }>(
+        `/repos/${repoPath}/git/trees/HEAD?recursive=1`
+      );
+    } catch {
+      try {
+        data = await client.get<{ tree: TreeEntry[]; truncated: boolean }>(
+          `/repos/${repoPath}/git/trees/main?recursive=1`
+        );
+      } catch {
+        data = await client.get<{ tree: TreeEntry[]; truncated: boolean }>(
+          `/repos/${repoPath}/git/trees/master?recursive=1`
+        );
+      }
+    }
 
     // Build directory tree (2 levels deep)
     const lines: string[] = [];

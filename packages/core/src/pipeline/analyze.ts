@@ -134,10 +134,12 @@ export async function analyzeProjects(
     onProjectStatus?: (projectId: string, status: ProjectStatus, detail?: string) => void;
     /** When aborted (e.g. Ink unmount on Ctrl+C), stops between projects and rejects in-flight adapter work. */
     signal?: AbortSignal;
+    /** Override LLM concurrency. Defaults to AGENT_CV_CONCURRENCY env or 8. */
+    concurrency?: number;
   } = {}
 ): Promise<AnalysisResult> {
   const analyzeStarted = Date.now();
-  const { noCache = false, dryRun = false, onProgress, onProjectStatus, signal } = options;
+  const { noCache = false, dryRun = false, onProgress, onProjectStatus, signal, concurrency } = options;
 
   const needsAnalysis = (p: Project) => {
     if (!p.analysis) return true;
@@ -163,7 +165,12 @@ export async function analyzeProjects(
   for (const p of toAnalyze) {
     onProjectStatus?.(p.id, "queued");
   }
-  const BATCH_SIZE = 3;
+  // Concurrency: option > AGENT_CV_CONCURRENCY env > 8 default.
+  const BATCH_SIZE = (() => {
+    if (concurrency && concurrency > 0) return concurrency;
+    const env = Number(process.env.AGENT_CV_CONCURRENCY);
+    return Number.isFinite(env) && env > 0 ? env : 8;
+  })();
   const CIRCUIT_BREAKER_THRESHOLD = 3; // consecutive failures to trigger
   let completed = 0;
   let analyzedOk = 0;
